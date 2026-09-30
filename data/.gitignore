@@ -1,0 +1,6 @@
+# Runtime data (created automatically). Only the seed catalogue is versioned.
+*
+!.gitignore
+!.htaccess
+!seed/
+!seed/**

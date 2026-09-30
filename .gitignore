@@ -1,3 +1,17 @@
-node_modules/
+# Local settings and secrets
+config.local.php
 .env
+
+# Runtime data (see also data/.gitignore and media/.gitignore)
+*.log
+Thumbs.db
+.DS_Store
+
+# Photos uploaded through the admin live on the server, not in git
+uploads/*
+!uploads/.htaccess
+!uploads/.gitkeep
+
+# Old Node.js leftovers
+node_modules/
 onika.zip
