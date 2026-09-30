@@ -76,7 +76,12 @@ $GLOBALS['onika_config'] = (static function (): array {
     return $cfg;
 })();
 
-date_default_timezone_set((string) cfg('timezone', 'Europe/Kyiv'));
+// "Europe/Kyiv" is missing from very old time-zone databases: fall back to its former name, then UTC.
+foreach ([(string) cfg('timezone', 'Europe/Kyiv'), 'Europe/Kiev', 'UTC'] as $tz) {
+    if (@date_default_timezone_set($tz)) {
+        break;
+    }
+}
 mb_internal_encoding('UTF-8');
 
 /* ------------------------------------------------------------- error handling */

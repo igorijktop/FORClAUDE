@@ -14,6 +14,13 @@ final class Session
             self::$started = true;
             return;
         }
+        // Crawlers get an in-memory throw-away session so they do not fill data/sessions.
+        if (!isset($_COOKIE[(string) cfg('session_name', 'onika_sid')])
+            && preg_match('/bot|crawl|spider|slurp|facebookexternalhit|preview|monitor/i', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))) {
+            $_SESSION = [];
+            self::$started = true;
+            return;
+        }
         $dir = DATA_DIR . '/sessions';
         if (!is_dir($dir)) {
             @mkdir($dir, 0775, true);
