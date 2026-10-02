@@ -26,7 +26,7 @@ $freeFrom = (int) ($settings['freeShippingFrom'] ?? 0);
 <title><?= e($title) ?></title>
 <meta name="description" content="<?= e($description) ?>">
 <?php if (!empty($meta['noindex'])): ?><meta name="robots" content="noindex, follow"><?php endif ?>
-<meta name="theme-color" content="#1454ff">
+<meta name="theme-color" content="#e11d74">
 <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
 <link rel="canonical" href="<?= e($canonical) ?>">
 <?php foreach (I18n::SUPPORTED as $l): ?>

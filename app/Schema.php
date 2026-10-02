@@ -6,7 +6,7 @@ namespace Onika;
 /** Database schema + versioned migrations (PRAGMA user_version). */
 final class Schema
 {
-    private const VERSION = 1;
+    private const VERSION = 2;
 
     public static function migrate(bool $fresh): void
     {
@@ -20,6 +20,9 @@ final class Schema
             if ($v < 1) {
                 self::v1($pdo);
             }
+            if ($v < 2) {
+                self::v2($pdo);
+            }
             $pdo->exec('PRAGMA user_version = ' . self::VERSION);
             $pdo->commit();
         } catch (\Throwable $e) {
@@ -29,6 +32,14 @@ final class Schema
         if ($fresh || (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn() === 0) {
             Seeder::run();
         }
+    }
+
+    /** Stock quantity per product. Products that were "in stock" get 1 piece, the others 0. */
+    private static function v2(\PDO $pdo): void
+    {
+        $pdo->exec('ALTER TABLE products ADD COLUMN stock_qty INTEGER NOT NULL DEFAULT 1');
+        $pdo->exec('UPDATE products SET stock_qty = CASE WHEN in_stock = 1 THEN 1 ELSE 0 END');
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_p_stock ON products(stock_qty)');
     }
 
     private static function v1(\PDO $pdo): void
@@ -69,7 +80,7 @@ CREATE TABLE IF NOT EXISTS categories (
   name TEXT NOT NULL UNIQUE,
   slug TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL DEFAULT '',
-  color TEXT NOT NULL DEFAULT '#1454ff',
+  color TEXT NOT NULL DEFAULT '#e11d74',
   sort_order INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   translations TEXT NOT NULL DEFAULT '{}'

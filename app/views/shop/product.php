@@ -12,7 +12,7 @@ $free = money($settings['freeShippingFrom'] ?: 5000);
 $data = [
     'id' => $product['id'], 'name' => $name, 'price' => $product['price'], 'oldPrice' => $product['oldPrice'],
     'image' => media($images[0], 300), 'url' => url('/product/' . $product['slug']), 'brand' => $product['brand'],
-    'inStock' => $product['inStock'], 'sizes' => $product['sizes'],
+    'inStock' => $product['inStock'], 'stock' => $product['stock'], 'sizes' => $product['sizes'],
 ];
 $big = array_map(static fn($s) => media($s, 1400), $images);
 ?>
@@ -48,6 +48,7 @@ $big = array_map(static fn($s) => media($s, 1400), $images);
       <h1><?= e($name) ?></h1>
       <div class="pi-row">
         <span class="pi-stock <?= $product['inStock'] ? 'in' : 'out' ?>"><span class="dot"></span><?= e($product['inStock'] ? t('common.inStock') : t('common.notAvailable')) ?></span>
+        <?php if ($product['stock'] > 0 && $product['stock'] <= 5): ?><span class="pi-left"><?= e(t('product.left', ['n' => $product['stock']])) ?></span><?php endif ?>
         <?php if ($sale): ?><span class="badge sale">−<?= $off ?>%</span><?php endif ?>
         <?php if ($product['sku']): ?><span class="small muted"><?= e(t('product.article')) ?>: <?= e($product['sku']) ?></span><?php endif ?>
       </div>
@@ -72,7 +73,7 @@ $big = array_map(static fn($s) => media($s, 1400), $images);
         <div class="lbl"><span><?= e(t('product.qty')) ?></span></div>
         <div class="qty">
           <button type="button" data-qminus aria-label="−"><?= icon('minus') ?></button>
-          <input type="number" id="qtyInput" value="1" min="1" max="99" inputmode="numeric" aria-label="<?= e(t('product.qty')) ?>">
+          <input type="number" id="qtyInput" value="1" min="1" max="<?= max(1, min(99, (int) $product['stock'])) ?>" inputmode="numeric" aria-label="<?= e(t('product.qty')) ?>">
           <button type="button" data-qplus aria-label="+"><?= icon('plus') ?></button>
         </div>
       </div>

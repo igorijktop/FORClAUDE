@@ -68,6 +68,14 @@
     if (s && s.form) s.form.submit();
   });
 
+  /* inline stock quantity in the product list: show the save button once the number changed */
+  document.addEventListener('input', function (e) {
+    var inp = e.target.closest('[data-stock-input]');
+    if (!inp || !inp.form) return;
+    var btn = inp.form.querySelector('[data-stock-save]');
+    if (btn) btn.hidden = inp.value === inp.dataset.orig;
+  });
+
   /* --------------------------------------------------------- product images */
   var list = $('#imgList'), drop = $('#dropZone'), fileInput = $('#fileInput');
   function tile(path, url, uploading) {
@@ -158,7 +166,7 @@
     if (!form) return;
     var title = $('#' + titleId), reset = $('#' + resetId);
     function fill(d) {
-      Object.keys(fields).forEach(function (k) { var el = $('#' + fields[k]); if (el) el.value = d[k] || (k === 'color' ? '#1454ff' : ''); });
+      Object.keys(fields).forEach(function (k) { var el = $('#' + fields[k]); if (el) el.value = d[k] || (k === 'color' ? '#e11d74' : ''); });
       $('#' + prefix + 'Id').value = d.id || '';
       title.textContent = d.id ? editTitle : newTitle;
       reset.hidden = !d.id;

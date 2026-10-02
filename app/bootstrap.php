@@ -39,12 +39,12 @@ define('UPLOAD_DIR', ROOT . '/uploads');
     http_response_code(500);
     header('Content-Type: text/html; charset=utf-8');
     echo '<!doctype html><meta charset="utf-8"><title>ONIKA — налаштування сервера</title>'
-        . '<body style="font:16px/1.6 system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 20px;color:#0a1633">'
+        . '<body style="font:16px/1.6 system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 20px;color:#3d0f27">'
         . '<h1>ONIKA</h1><p>Сервер ще не готовий до запуску. Виправте:<br>The server is not ready yet. Please fix:</p><ul>';
     foreach ($problems as $p) {
         echo '<li>' . htmlspecialchars($p, ENT_QUOTES, 'UTF-8') . '</li>';
     }
-    echo '</ul><p style="color:#5b6785">XAMPP: Config → php.ini → розкоментуйте / uncomment '
+    echo '</ul><p style="color:#8b5a73">XAMPP: Config → php.ini → розкоментуйте / uncomment '
         . '<code>extension=pdo_sqlite</code>, <code>extension=gd</code>, <code>extension=mbstring</code>, '
         . '<code>extension=fileinfo</code> → Restart Apache.</p></body>';
     exit;

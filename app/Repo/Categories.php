@@ -8,7 +8,7 @@ use Onika\Text;
 
 final class Categories
 {
-    private const COLORS = ['#1454ff', '#00a3d9', '#7c3aed', '#e11d74', '#f59e0b', '#059669', '#ea580c', '#0891b2', '#4f46e5', '#be185d'];
+    private const COLORS = ['#e11d74', '#ec4899', '#be185d', '#a21caf', '#f59e0b', '#fb7185', '#ea580c', '#9d174d', '#c026d3', '#db2777'];
 
     public static function hydrate(array $c): array
     {
@@ -17,7 +17,7 @@ final class Categories
             'name' => (string) $c['name'],
             'slug' => (string) $c['slug'],
             'description' => (string) ($c['description'] ?? ''),
-            'color' => (string) ($c['color'] ?? '#1454ff'),
+            'color' => (string) ($c['color'] ?? '#e11d74'),
             'order' => (int) $c['sort_order'],
             'active' => (int) $c['active'] === 1,
             'translations' => (array) Text::jsonDecode($c['translations'] ?? '{}', []),

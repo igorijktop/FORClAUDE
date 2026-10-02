@@ -77,6 +77,7 @@ final class Orders
 
         $items = [];
         $unavailable = [];
+        $limits = [];   // product id => pieces actually left, for items that asked for too many
         if (!isset($errors['items'])) {
             $merged = [];
             foreach ($rawItems as $it) {
@@ -89,10 +90,24 @@ final class Orders
                 $key = $id . '|' . $size;
                 $merged[$key] = ['id' => $id, 'size' => $size, 'qty' => min(99, ($merged[$key]['qty'] ?? 0) + $qty)];
             }
+            // Stock is kept per product (sizes share it), so add up the pieces asked for across sizes.
+            $resolved = [];
+            $want = [];
             foreach ($merged as $it) {
                 $prod = Products::findVisible($it['id']);
+                $resolved[] = [$it, $prod];
+                if ($prod) {
+                    $want[$prod['id']] = ($want[$prod['id']] ?? 0) + $it['qty'];
+                }
+            }
+            foreach ($resolved as [$it, $prod]) {
                 if (!$prod || !$prod['inStock']) {
                     $unavailable[] = $it['id'];
+                    continue;
+                }
+                if ($want[$prod['id']] > $prod['stock']) {
+                    $unavailable[] = $it['id'];
+                    $limits[$prod['id']] = $prod['stock'];
                     continue;
                 }
                 $size = null;
@@ -120,7 +135,7 @@ final class Orders
             }
         }
         if ($errors) {
-            return ['ok' => false, 'errors' => $errors, 'unavailable' => $unavailable];
+            return ['ok' => false, 'errors' => $errors, 'unavailable' => $unavailable, 'limits' => $limits];
         }
 
         $subtotal = 0.0;
@@ -138,10 +153,29 @@ final class Orders
         $customer = ['name' => $name, 'phone' => $phone, 'email' => $email, 'city' => $ship === 'pickup' ? '' : $city, 'shipping' => $ship, 'warehouse' => $ship === 'pickup' ? '' : $warehouse, 'comment' => $comment];
         $history = [['at' => $now, 'status' => 'new', 'note' => '']];
 
-        Db::exec(
-            'INSERT INTO orders (id,token,created_at,status,customer,payment,items,subtotal,shipping,total,history,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-            [$id, $token, $now, 'new', Text::jsonEncode($customer), $pay, Text::jsonEncode($items), $subtotal, $shipping, $total, Text::jsonEncode($history), $userId]
-        );
+        // Take the pieces and save the order in one transaction. Each UPDATE only succeeds while enough pieces
+        // are left, so two customers can never buy the last one at the same time.
+        $totals = [];
+        foreach ($items as $it) {
+            $totals[$it['id']] = ($totals[$it['id']] ?? 0) + $it['qty'];
+        }
+        try {
+            Db::tx(function () use ($totals, $id, $token, $now, $customer, $pay, $items, $subtotal, $shipping, $total, $history, $userId): void {
+                foreach ($totals as $pid => $n) {
+                    if (!Products::takeStock((string) $pid, $n)) {
+                        throw new \DomainException((string) $pid);
+                    }
+                }
+                Db::exec(
+                    'INSERT INTO orders (id,token,created_at,status,customer,payment,items,subtotal,shipping,total,history,user_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                    [$id, $token, $now, 'new', Text::jsonEncode($customer), $pay, Text::jsonEncode($items), $subtotal, $shipping, $total, Text::jsonEncode($history), $userId]
+                );
+            });
+        } catch (\DomainException $e) {
+            $pid = $e->getMessage();
+            $left = Products::find($pid)['stock'] ?? 0;
+            return ['ok' => false, 'errors' => ['items' => 'unavailable'], 'unavailable' => [$pid], 'limits' => [$pid => $left]];
+        }
         return ['ok' => true, 'order' => self::find($id)];
     }
 
@@ -218,7 +252,20 @@ final class Orders
         }
         $h = $o['history'];
         $h[] = ['at' => Text::now(), 'status' => $status, 'note' => Text::truncate($note, 300)];
-        Db::exec('UPDATE orders SET status = ?, history = ? WHERE id = ?', [$status, Text::jsonEncode($h), $id]);
+        $was = (string) $o['status'];
+        Db::tx(function () use ($id, $status, $h, $was, $o): void {
+            Db::exec('UPDATE orders SET status = ?, history = ? WHERE id = ?', [$status, Text::jsonEncode($h), $id]);
+            // A cancelled order gives its pieces back; re-opening it takes them again.
+            if ($status === 'cancelled' && $was !== 'cancelled') {
+                foreach ((array) $o['items'] as $it) {
+                    Products::returnStock((string) ($it['id'] ?? ''), (int) ($it['qty'] ?? 0));
+                }
+            } elseif ($was === 'cancelled' && $status !== 'cancelled') {
+                foreach ((array) $o['items'] as $it) {
+                    Products::removeStock((string) ($it['id'] ?? ''), (int) ($it['qty'] ?? 0));
+                }
+            }
+        });
         return true;
     }
 

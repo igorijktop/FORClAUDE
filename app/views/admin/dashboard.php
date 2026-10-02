@@ -29,7 +29,7 @@ $statCard = static function (string $ic, string $tone, string $label, string $va
     <div class="a-card-head"><h2><?= e(t('admin.last14')) ?></h2><span class="muted small"><?= (int) $sumOrders ?> <?= e(t('admin.ordersShort')) ?> · <?= e(money($sumRev)) ?></span></div>
     <div class="a-card-body">
       <svg class="a-chart" viewBox="0 0 <?= $W ?> <?= $H ?>" role="img" aria-label="<?= e(t('admin.last14')) ?>" preserveAspectRatio="none">
-        <defs><linearGradient id="barg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00c8ff"/><stop offset="1" stop-color="#1f5bff"/></linearGradient></defs>
+        <defs><linearGradient id="barg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6ba5"/><stop offset="1" stop-color="#e11d74"/></linearGradient></defs>
         <?php for ($g = 0; $g <= 3; $g++): $y = $padT + ($H - $padT - $padB) * $g / 3; ?><line x1="<?= $padL ?>" x2="<?= $W ?>" y1="<?= round($y, 1) ?>" y2="<?= round($y, 1) ?>" class="a-grid-line"/><?php endfor ?>
         <?php foreach ($series as $i => $d):
             $h = ($H - $padT - $padB) * ($d['revenue'] / $maxRev);

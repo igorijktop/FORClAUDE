@@ -21,7 +21,7 @@ final class Stats
             'products' => (int) Db::val('SELECT COUNT(*) FROM products'),
             'productsActive' => (int) Db::val('SELECT COUNT(*) FROM products WHERE active = 1'),
             'productsHidden' => (int) Db::val('SELECT COUNT(*) FROM products WHERE active = 0'),
-            'outOfStock' => (int) Db::val('SELECT COUNT(*) FROM products WHERE active = 1 AND in_stock = 0'),
+            'outOfStock' => (int) Db::val('SELECT COUNT(*) FROM products WHERE active = 1 AND stock_qty <= 0'),
             'categories' => (int) Db::val('SELECT COUNT(*) FROM categories'),
             'brands' => (int) Db::val('SELECT COUNT(*) FROM brands'),
             'orders' => array_sum($byStatus),

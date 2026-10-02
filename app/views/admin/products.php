@@ -34,8 +34,10 @@ $statusOpts = ['' => t('admin.allStatuses'), 'active' => t('admin.published'), '
             <td><?= e(I18n::categoryName($p['category'])) ?></td>
             <td><b><?= e(money($p['price'])) ?></b><?php if ($p['oldPrice']): ?><div class="small muted"><s><?= e(money($p['oldPrice'])) ?></s></div><?php endif ?></td>
             <td>
-              <form method="post" action="<?= e(purl('/admin/products/' . $pid . '/stock')) ?>"><?= csrf_field() ?>
-                <button class="pill <?= $p['inStock'] ? 'green' : 'red' ?> pill-btn" type="submit" title="<?= e(t('admin.toggleStock')) ?>"><?= e($p['inStock'] ? t('common.inStock') : t('common.notAvailable')) ?></button></form>
+              <form method="post" class="stock-form" action="<?= e(purl('/admin/products/' . $pid . '/stock')) ?>"><?= csrf_field() ?>
+                <input class="stock-input<?= $p['stock'] === 0 ? ' is-zero' : '' ?>" type="number" name="qty" min="0" max="99999" step="1" inputmode="numeric" value="<?= (int) $p['stock'] ?>" data-stock-input data-orig="<?= (int) $p['stock'] ?>" aria-label="<?= e(t('admin.stockQty')) ?>" title="<?= e(t('admin.stockQty')) ?>">
+                <button class="a-icon-btn" type="submit" data-stock-save hidden title="<?= e(t('admin.saveQty')) ?>"><?= icon('check') ?></button></form>
+              <?php if ($p['stock'] === 0): ?><div class="small muted" style="margin-top:3px"><?= e(t('common.notAvailable')) ?></div><?php endif ?>
             </td>
             <td>
               <form method="post" action="<?= e(purl('/admin/products/' . $pid . '/toggle')) ?>"><?= csrf_field() ?>

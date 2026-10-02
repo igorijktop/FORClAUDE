@@ -43,7 +43,7 @@ use Onika\I18n; ?>
         <div class="field"><label for="catDescRu"><?= e(t('admin.descRu')) ?></label><textarea id="catDescRu" name="descRu" rows="2" maxlength="300"></textarea></div>
         <div class="field"><label for="catDescEn"><?= e(t('admin.descEn')) ?></label><textarea id="catDescEn" name="descEn" rows="2" maxlength="300"></textarea></div>
       </div>
-      <div class="field"><label for="catColor"><?= e(t('admin.color')) ?></label><input id="catColor" type="color" name="color" value="#1454ff"></div>
+      <div class="field"><label for="catColor"><?= e(t('admin.color')) ?></label><input id="catColor" type="color" name="color" value="#e11d74"></div>
       <div class="a-form-actions">
         <button class="btn" type="submit"><?= icon('check') ?> <?= e(t('admin.saveCategory')) ?></button>
         <button class="btn btn-ghost" type="button" id="catReset" hidden><?= e(t('admin.cancel')) ?></button>

@@ -556,4 +556,10 @@ Free shipping for orders from {amount}.',
     'admin.trashHint' => 'Deleted products are kept here and can be restored.',
 
     'js.required' => 'JavaScript is required to shop on this site.',
+    'product.left' => 'Only {n} left',
+    'product.maxQty' => 'Only {n} available',
+    'js.stockLimit' => 'That many are not in stock — your cart was updated.',
+    'admin.stockQty' => 'Quantity in stock',
+    'admin.stockHint' => '0 means out of stock. An order lowers the quantity automatically; cancelling the order puts it back.',
+    'admin.saveQty' => 'Save quantity',
 ];

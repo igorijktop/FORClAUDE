@@ -29,7 +29,7 @@ final class Seeder
         $insC = Db::pdo()->prepare('INSERT OR IGNORE INTO categories (id,name,slug,description,color,sort_order,active,translations) VALUES (?,?,?,?,?,?,?,?)');
         foreach ($seed['categories'] ?? [] as $c) {
             $insC->execute([
-                (string) $c['id'], $c['name'], $c['slug'], (string) ($c['description'] ?? ''), $c['color'] ?? '#1454ff',
+                (string) $c['id'], $c['name'], $c['slug'], (string) ($c['description'] ?? ''), $c['color'] ?? '#e11d74',
                 (int) ($c['sort_order'] ?? 0), !empty($c['active']) ? 1 : 0, Text::jsonEncode((object) ($c['translations'] ?? [])),
             ]);
         }
@@ -42,19 +42,21 @@ final class Seeder
         }
 
         $insP = Db::pdo()->prepare('INSERT OR IGNORE INTO products
-            (id,name,slug,price,old_price,category,brand,description,images,in_stock,featured,active,sizes,tags,search_blob,sku,views,sales,translations,created_at,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            (id,name,slug,price,old_price,category,brand,description,images,in_stock,stock_qty,featured,active,sizes,tags,search_blob,sku,views,sales,translations,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         foreach ($seed['products'] ?? [] as $p) {
             $tr = $p['translations'] ?? [];
             $blob = Text::blob([
                 $p['name'], $p['brand'] ?? '', $p['category'], $catTr[$p['category']] ?? [], $p['description'] ?? '',
                 $tr['ru']['name'] ?? '', $tr['en']['name'] ?? '',
             ]);
+            // "stock" = pieces on hand; when the catalog has no number, an in-stock product counts as 1 piece.
+            $stock = isset($p['stock']) ? max(0, (int) $p['stock']) : (!empty($p['in_stock']) ? 1 : 0);
             $insP->execute([
                 (string) $p['id'], $p['name'], $p['slug'], (float) $p['price'],
                 isset($p['old_price']) && $p['old_price'] ? (float) $p['old_price'] : null,
                 $p['category'], $p['brand'] ?: null, (string) $p['description'],
-                Text::jsonEncode(array_values($p['images'] ?? [])), !empty($p['in_stock']) ? 1 : 0,
+                Text::jsonEncode(array_values($p['images'] ?? [])), $stock > 0 ? 1 : 0, $stock,
                 !empty($p['featured']) ? 1 : 0, !empty($p['active']) ? 1 : 0,
                 Text::jsonEncode(array_values($p['sizes'] ?? [])), Text::jsonEncode(array_values($p['tags'] ?? [])),
                 $blob, $p['sku'] ?? null, (int) ($p['views'] ?? 0), 0, Text::jsonEncode((object) $tr),

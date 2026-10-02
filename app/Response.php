@@ -80,10 +80,10 @@ final class Response
               . htmlspecialchars($e->getMessage() . "\n" . $e->getFile() . ':' . $e->getLine() . "\n\n" . $e->getTraceAsString(), ENT_QUOTES, 'UTF-8') . '</pre>'
             : '';
         $html = '<!doctype html><html lang="uk"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>500 — ONIKA</title>'
-            . '<body style="font:16px/1.6 system-ui,sans-serif;max-width:640px;margin:12vh auto;padding:0 20px;color:#0a1633;text-align:center">'
-            . '<div style="font-size:72px;font-weight:800;background:linear-gradient(135deg,#00c2ff,#1454ff);-webkit-background-clip:text;background-clip:text;color:transparent">500</div>'
-            . '<h1 style="margin:8px 0">Щось пішло не так</h1><p style="color:#5b6785">Something went wrong. Please try again in a moment.</p>'
-            . '<p><a href="' . htmlspecialchars(url('/'), ENT_QUOTES, 'UTF-8') . '" style="color:#1454ff">ONIKA</a></p>' . $detail . '</body></html>';
+            . '<body style="font:16px/1.6 system-ui,sans-serif;max-width:640px;margin:12vh auto;padding:0 20px;color:#3d0f27;text-align:center">'
+            . '<div style="font-size:72px;font-weight:800;background:linear-gradient(135deg,#ff6ba5,#e11d74);-webkit-background-clip:text;background-clip:text;color:transparent">500</div>'
+            . '<h1 style="margin:8px 0">Щось пішло не так</h1><p style="color:#8b5a73">Something went wrong. Please try again in a moment.</p>'
+            . '<p><a href="' . htmlspecialchars(url('/'), ENT_QUOTES, 'UTF-8') . '" style="color:#e11d74">ONIKA</a></p>' . $detail . '</body></html>';
         return new self($html, 500);
     }
 

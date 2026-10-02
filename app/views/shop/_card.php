@@ -14,7 +14,7 @@ $needsSize = !empty($p['sizes']);
 ?>
 <article class="pcard<?= $out ? ' is-out' : '' ?>" data-id="<?= e($p['id']) ?>" data-p="<?= json_attr([
     'id' => $p['id'], 'name' => $name, 'price' => $p['price'], 'oldPrice' => $p['oldPrice'], 'image' => media($src0, 300),
-    'url' => $href, 'brand' => $p['brand'], 'inStock' => $p['inStock'], 'sizes' => $p['sizes'],
+    'url' => $href, 'brand' => $p['brand'], 'inStock' => $p['inStock'], 'stock' => $p['stock'], 'sizes' => $p['sizes'],
 ]) ?>">
   <div class="pcard-media">
     <a href="<?= e($href) ?>" aria-label="<?= e($name) ?>" tabindex="-1">

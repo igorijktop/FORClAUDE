@@ -159,17 +159,29 @@
     for (var i = 0; i < cart.length; i++) if (cart[i].id === id && (cart[i].size || '') === (size || '')) return cart[i];
     return null;
   }
+  /* Stock is kept per product, so sizes of one product share it. */
+  function limitFor(id, size, stock) {
+    var s = typeof stock === 'number' ? stock : 99;
+    var others = 0;
+    cart.forEach(function (i) { if (i.id === id && (i.size || '') !== (size || '')) others += i.qty; });
+    return Math.max(1, Math.min(99, s - others));
+  }
   function addToCart(p, size, qty) {
-    qty = Math.max(1, Math.min(99, qty || 1));
-    var f = findItem(p.id, size);
-    if (f) f.qty = Math.min(99, f.qty + qty);
-    else cart.push({ id: String(p.id), size: size || '', qty: qty, name: p.name, price: Number(p.price), oldPrice: p.oldPrice || null, image: p.image, url: p.url, brand: p.brand || '', inStock: true });
+    var id = String(p.id);
+    var f = findItem(id, size);
+    var max = limitFor(id, size, p.stock);
+    qty = Math.max(1, qty || 1);
+    var want = (f ? f.qty : 0) + qty;
+    if (want > max) toast(T('product.maxQty', { n: max }), 'info');
+    want = Math.min(max, want);
+    if (f) { f.qty = want; f.stock = p.stock; }
+    else cart.push({ id: id, size: size || '', qty: want, stock: p.stock, name: p.name, price: Number(p.price), oldPrice: p.oldPrice || null, image: p.image, url: p.url, brand: p.brand || '', inStock: true });
     saveCart();
     var badge = $('#cartCount'); if (badge) { badge.classList.remove('bump'); void badge.offsetWidth; badge.classList.add('bump'); }
   }
 
   var lastSync = 0;
-  function syncCart(force) {
+  function syncCart(force, quiet) {
     if (!cart.length) return Promise.resolve();
     if (!force && Date.now() - lastSync < 20000) return Promise.resolve();
     lastSync = Date.now();
@@ -178,16 +190,22 @@
       if (!r.ok || !r.body || !r.body.items) return;
       var by = {};
       r.body.items.forEach(function (p) { by[p.id] = p; });
-      var removed = 0;
+      var removed = 0, clamped = 0;
       cart = cart.filter(function (it) { if (by[it.id]) return true; removed++; return false; });
       cart.forEach(function (it) {
         var p = by[it.id];
-        it.name = p.name; it.price = p.price; it.oldPrice = p.oldPrice; it.image = p.image; it.url = p.url; it.inStock = p.inStock; it.sizes = p.sizes;
+        it.name = p.name; it.price = p.price; it.oldPrice = p.oldPrice; it.image = p.image; it.url = p.url; it.inStock = p.inStock; it.sizes = p.sizes; it.stock = p.stock;
         if (p.sizes && p.sizes.length && p.sizes.indexOf(it.size) === -1) it.inStock = false;
+      });
+      cart.forEach(function (it) {
+        if (it.inStock === false) return;
+        var lim = limitFor(it.id, it.size, it.stock);
+        if (it.qty > lim) { it.qty = lim; clamped++; }
       });
       store(CART_KEY, cart);
       renderCartUI();
       if (removed) toast(T('js.itemsRemoved'), 'info');
+      else if (clamped && !quiet) toast(T('js.stockLimit'), 'info');
     }).catch(function () { /* offline: keep local data */ });
   }
 
@@ -200,8 +218,8 @@
       '<div class="ci-meta">' + (it.brand ? esc(it.brand) : '') + (it.size ? (it.brand ? ' · ' : '') + esc(T('product.size')) + ': ' + esc(it.size) : '') + '</div>' +
       (it.inStock === false ? '<div class="ci-note">' + esc(T('js.outOfStockItem')) + '</div>' :
         '<div class="qty"><button type="button" data-qty="dec" ' + k + ' aria-label="−">' + icon('minus') + '</button>' +
-        '<input type="number" value="' + it.qty + '" min="1" max="99" inputmode="numeric" data-qty-input ' + k + ' aria-label="' + esc(T('product.qty')) + '">' +
-        '<button type="button" data-qty="inc" ' + k + ' aria-label="+">' + icon('plus') + '</button></div>') +
+        '<input type="number" value="' + it.qty + '" min="1" max="' + limitFor(it.id, it.size, it.stock) + '" inputmode="numeric" data-qty-input ' + k + ' aria-label="' + esc(T('product.qty')) + '">' +
+        '<button type="button" data-qty="inc" ' + k + (it.qty >= limitFor(it.id, it.size, it.stock) ? ' disabled' : '') + ' aria-label="+">' + icon('plus') + '</button></div>') +
       '</div><div class="ci-side"><div class="ci-price">' + money(line) + (it.oldPrice && it.oldPrice > it.price ? '<s>' + money(it.oldPrice * it.qty) + '</s>' : '') + '</div>' +
       '<button type="button" class="ci-remove" data-remove ' + k + ' aria-label="' + esc(T('common.remove')) + '">' + icon('trash') + '</button></div></div>';
   }
@@ -289,7 +307,12 @@
     var q = t.closest('[data-qty]');
     if (q) {
       var it = findItem(q.dataset.id, q.dataset.size);
-      if (it) { it.qty = Math.max(1, Math.min(99, it.qty + (q.dataset.qty === 'inc' ? 1 : -1))); saveCart(); }
+      if (it) {
+        var lim = limitFor(it.id, it.size, it.stock);
+        if (q.dataset.qty === 'inc' && it.qty >= lim) toast(T('product.maxQty', { n: lim }), 'info');
+        it.qty = Math.max(1, Math.min(lim, it.qty + (q.dataset.qty === 'inc' ? 1 : -1)));
+        saveCart();
+      }
       return;
     }
     var add = t.closest('[data-add]');
@@ -312,7 +335,12 @@
     var inp = e.target.closest('[data-qty-input]');
     if (!inp) return;
     var it = findItem(inp.dataset.id, inp.dataset.size);
-    if (it) { it.qty = Math.max(1, Math.min(99, parseInt(inp.value, 10) || 1)); saveCart(); }
+    if (it) {
+      var lim = limitFor(it.id, it.size, it.stock), want = parseInt(inp.value, 10) || 1;
+      if (want > lim) toast(T('product.maxQty', { n: lim }), 'info');
+      it.qty = Math.max(1, Math.min(lim, want));
+      saveCart();
+    }
   });
   function openCart() {
     closePanels();
@@ -506,8 +534,14 @@
 
     // quantity
     var qty = $('#qtyInput');
-    $('[data-qminus]').addEventListener('click', function () { qty.value = Math.max(1, (+qty.value || 1) - 1); });
-    $('[data-qplus]').addEventListener('click', function () { qty.value = Math.min(99, (+qty.value || 1) + 1); });
+    var qtyMax = Math.max(1, Math.min(99, typeof product.stock === 'number' ? product.stock : 99));
+    function setQty(n) {
+      if (n > qtyMax) toast(T('product.maxQty', { n: qtyMax }), 'info');
+      qty.value = Math.max(1, Math.min(qtyMax, n || 1));
+    }
+    $('[data-qminus]').addEventListener('click', function () { setQty((+qty.value || 1) - 1); });
+    $('[data-qplus]').addEventListener('click', function () { setQty((+qty.value || 1) + 1); });
+    qty.addEventListener('change', function () { setQty(parseInt(qty.value, 10) || 1); });
 
     function buy() {
       var size = '';
@@ -562,7 +596,7 @@
   /* recently viewed strip (home + product pages) */
   function cardHtml(p) {
     var sale = p.oldPrice && p.oldPrice > p.price;
-    var data = esc(JSON.stringify({ id: p.id, name: p.name, price: p.price, oldPrice: p.oldPrice, image: p.image, url: p.url, brand: p.brand, inStock: p.inStock, sizes: p.sizes }));
+    var data = esc(JSON.stringify({ id: p.id, name: p.name, price: p.price, oldPrice: p.oldPrice, image: p.image, url: p.url, brand: p.brand, inStock: p.inStock, stock: p.stock, sizes: p.sizes }));
     var sized = p.sizes && p.sizes.length;
     return '<article class="pcard' + (p.inStock ? '' : ' is-out') + '" data-id="' + esc(p.id) + '" data-p="' + data + '"><div class="pcard-media"><a href="' + esc(p.url) + '" tabindex="-1"><img class="main" src="' + esc(p.image) + '" alt="' + esc(p.name) + '" loading="lazy" width="300" height="400"></a>' +
       '<div class="pcard-badges">' + (p.inStock ? '' : '<span class="badge out">' + esc(T('common.badgeOut')) + '</span>') + (sale ? '<span class="badge sale">−' + Math.round((1 - p.price / p.oldPrice) * 100) + '%</span>' : '') + '</div>' +
@@ -727,7 +761,7 @@
         if (r.status === 429) { toast(T('js.tooMany'), 'error'); return; }
         var errs = (r.body && r.body.errors) || {};
         Object.keys(errs).forEach(function (k) { setErr(k, true); });
-        if (errs.items) { lastSync = 0; syncCart(true); }
+        if (errs.items) { lastSync = 0; syncCart(true, true); }
         toast((r.body && r.body.error) || T('js.orderError'), 'error');
       }).catch(function () { btn.classList.remove('is-loading'); btn.disabled = false; toast(T('js.networkError'), 'error'); });
     });

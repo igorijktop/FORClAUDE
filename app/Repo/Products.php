@@ -10,8 +10,12 @@ use Onika\Text;
 
 final class Products
 {
+    public const MAX_STOCK = 99999;
+
     public static function hydrate(array $r): array
     {
+        // Rows from the trash made before stock_qty existed only have the in_stock flag.
+        $stock = max(0, (int) ($r['stock_qty'] ?? ((int) ($r['in_stock'] ?? 1) === 1 ? 1 : 0)));
         return [
             'id' => (string) $r['id'],
             'name' => (string) $r['name'],
@@ -22,7 +26,8 @@ final class Products
             'brand' => $r['brand'] !== null && $r['brand'] !== '' ? (string) $r['brand'] : null,
             'description' => (string) ($r['description'] ?? ''),
             'images' => array_values(array_filter((array) Text::jsonDecode($r['images'] ?? '[]', []), 'is_string')),
-            'inStock' => (int) $r['in_stock'] === 1,
+            'stock' => $stock,
+            'inStock' => $stock > 0,
             'featured' => (int) $r['featured'] === 1,
             'active' => (int) $r['active'] === 1,
             'sizes' => array_values(array_filter((array) Text::jsonDecode($r['sizes'] ?? '[]', []), 'is_string')),
@@ -80,7 +85,7 @@ final class Products
             $params[] = (float) $f['max'];
         }
         if (!empty($f['in_stock'])) {
-            $where[] = 'in_stock = 1';
+            $where[] = 'stock_qty > 0';
         }
         if (!empty($f['featured'])) {
             $where[] = 'featured = 1';
@@ -89,7 +94,7 @@ final class Products
             $where[] = match ((string) $f['status']) {
                 'active' => 'active = 1',
                 'hidden' => 'active = 0',
-                'out' => 'in_stock = 0',
+                'out' => 'stock_qty <= 0',
                 default => '1 = 1',
             };
         }
@@ -204,6 +209,11 @@ final class Products
         if (!is_numeric($price) || (float) $price < 0) {
             $errors['price'] = 'invalid';
         }
+        // Stock = whole pieces (0 = out of stock). Empty keeps the current value (1 for a new product).
+        $stockRaw = array_key_exists('stock', $in) ? trim((string) $in['stock']) : '';
+        if ($stockRaw !== '' && !ctype_digit($stockRaw)) {
+            $errors['stock'] = 'invalid';
+        }
         if ($errors) {
             return ['ok' => false, 'errors' => $errors];
         }
@@ -264,10 +274,17 @@ final class Products
             }
         }
 
-        $flag = static fn(string $k, bool $def): int => array_key_exists($k, $in) ? (Text::boolish($in[$k]) ? 1 : 0) : ($existing ? (int) $existing[$k === 'inStock' ? 'inStock' : $k] : (int) $def);
-        $inStock = $flag('inStock', true);
+        $flag = static fn(string $k, bool $def): int => array_key_exists($k, $in) ? (Text::boolish($in[$k]) ? 1 : 0) : ($existing ? (int) $existing[$k] : (int) $def);
         $featured = $flag('featured', false);
         $active = $flag('active', true);
+        if ($stockRaw !== '') {
+            $stock = min(self::MAX_STOCK, (int) $stockRaw);
+        } elseif (array_key_exists('inStock', $in)) {      // callers that only know the old on/off flag
+            $stock = Text::boolish($in['inStock']) ? max(1, (int) ($existing['stock'] ?? 1)) : 0;
+        } else {
+            $stock = $existing ? (int) $existing['stock'] : 1;
+        }
+        $inStock = $stock > 0 ? 1 : 0;
 
         $sku = trim((string) ($in['sku'] ?? ($existing['sku'] ?? '')));
         $now = Text::now();
@@ -276,7 +293,7 @@ final class Products
             $tr['ru']['name'] ?? '', $tr['en']['name'] ?? '', $sku,
         ]);
 
-        return Db::tx(function () use ($existing, $name, $price, $old, $category, $brand, $description, $clean, $inStock, $featured, $active, $sizes, $blob, $sku, $tr, $now, $in): array {
+        return Db::tx(function () use ($existing, $name, $price, $old, $category, $brand, $description, $clean, $inStock, $stock, $featured, $active, $sizes, $blob, $sku, $tr, $now, $in): array {
             if ($existing) {
                 $slug = $existing['slug'];
                 $custom = trim((string) ($in['slug'] ?? ''));
@@ -284,16 +301,16 @@ final class Products
                     $slug = self::uniqueSlug(Text::slugify($custom), $existing['id']);
                 }
                 Db::exec(
-                    'UPDATE products SET name=?, slug=?, price=?, old_price=?, category=?, brand=?, description=?, images=?, in_stock=?, featured=?, active=?, sizes=?, search_blob=?, sku=?, translations=?, updated_at=? WHERE id=?',
-                    [$name, $slug, $price, $old, $category, $brand !== '' ? $brand : null, $description, Text::jsonEncode($clean), $inStock, $featured, $active, Text::jsonEncode($sizes), $blob, $sku !== '' ? $sku : null, Text::jsonEncode((object) $tr), $now, $existing['id']]
+                    'UPDATE products SET name=?, slug=?, price=?, old_price=?, category=?, brand=?, description=?, images=?, in_stock=?, stock_qty=?, featured=?, active=?, sizes=?, search_blob=?, sku=?, translations=?, updated_at=? WHERE id=?',
+                    [$name, $slug, $price, $old, $category, $brand !== '' ? $brand : null, $description, Text::jsonEncode($clean), $inStock, $stock, $featured, $active, Text::jsonEncode($sizes), $blob, $sku !== '' ? $sku : null, Text::jsonEncode((object) $tr), $now, $existing['id']]
                 );
                 $id = $existing['id'];
             } else {
                 $id = Text::uid('p');
                 $slug = self::uniqueSlug(Text::slugify($name), $id);
                 Db::exec(
-                    'INSERT INTO products (id,name,slug,price,old_price,category,brand,description,images,in_stock,featured,active,sizes,tags,search_blob,sku,views,sales,translations,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                    [$id, $name, $slug, $price, $old, $category, $brand !== '' ? $brand : null, $description, Text::jsonEncode($clean), $inStock, $featured, $active, Text::jsonEncode($sizes), '[]', $blob, $sku !== '' ? $sku : null, 0, 0, Text::jsonEncode((object) $tr), $now, $now]
+                    'INSERT INTO products (id,name,slug,price,old_price,category,brand,description,images,in_stock,stock_qty,featured,active,sizes,tags,search_blob,sku,views,sales,translations,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                    [$id, $name, $slug, $price, $old, $category, $brand !== '' ? $brand : null, $description, Text::jsonEncode($clean), $inStock, $stock, $featured, $active, Text::jsonEncode($sizes), '[]', $blob, $sku !== '' ? $sku : null, 0, 0, Text::jsonEncode((object) $tr), $now, $now]
                 );
             }
             return ['ok' => true, 'product' => self::find($id)];
@@ -318,9 +335,43 @@ final class Products
         Db::exec('UPDATE products SET active = ?, updated_at = ? WHERE id = ?', [$active ? 1 : 0, Text::now(), $id]);
     }
 
-    public static function setInStock(string $id, bool $inStock): void
+    /** Set the exact number of pieces in stock (0 = out of stock). */
+    public static function setStock(string $id, int $qty): void
     {
-        Db::exec('UPDATE products SET in_stock = ?, updated_at = ? WHERE id = ?', [$inStock ? 1 : 0, Text::now(), $id]);
+        $qty = max(0, min(self::MAX_STOCK, $qty));
+        Db::exec('UPDATE products SET stock_qty = ?, in_stock = ?, updated_at = ? WHERE id = ?', [$qty, $qty > 0 ? 1 : 0, Text::now(), $id]);
+    }
+
+    /**
+     * Atomically take $qty pieces for an order. Returns false (and changes nothing)
+     * when fewer than $qty pieces are left.
+     */
+    public static function takeStock(string $id, int $qty): bool
+    {
+        return Db::exec(
+            'UPDATE products SET stock_qty = stock_qty - ?, in_stock = CASE WHEN stock_qty - ? > 0 THEN 1 ELSE 0 END, updated_at = ?'
+            . ' WHERE id = ? AND stock_qty >= ?',
+            [$qty, $qty, Text::now(), $id, $qty]
+        ) === 1;
+    }
+
+    /** Take pieces without failing (a cancelled order is re-opened); never goes below 0. */
+    public static function removeStock(string $id, int $qty): void
+    {
+        $qty = max(0, $qty);
+        Db::exec(
+            'UPDATE products SET stock_qty = MAX(0, stock_qty - ?), in_stock = CASE WHEN stock_qty - ? > 0 THEN 1 ELSE 0 END, updated_at = ? WHERE id = ?',
+            [$qty, $qty, Text::now(), $id]
+        );
+    }
+
+    /** Put pieces back (cancelled order). Unknown products are ignored. */
+    public static function returnStock(string $id, int $qty): void
+    {
+        Db::exec(
+            'UPDATE products SET stock_qty = MIN(?, stock_qty + ?), in_stock = 1, updated_at = ? WHERE id = ?',
+            [self::MAX_STOCK, max(0, $qty), Text::now(), $id]
+        );
     }
 
     /** Move to trash (soft delete). */

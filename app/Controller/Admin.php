@@ -170,7 +170,7 @@ final class Admin
             'sku' => Request::str('sku'),
             'sizes' => Request::str('sizes'),
             'slug' => Request::str('slug'),
-            'inStock' => Request::input('inStock') !== null,
+            'stock' => Request::str('stock'),
             'featured' => Request::input('featured') !== null,
             'active' => Request::input('active') !== null,
             'images' => array_values(array_filter(array_map('trim', array_map('strval', (array) Request::input('images', []))), 'strlen')),
@@ -216,7 +216,15 @@ final class Admin
         self::guardPost();
         $prod = Products::find($p['id']);
         if ($prod) {
-            Products::setInStock($prod['id'], !$prod['inStock']);
+            // Inline edit in the product list sends the exact number; without it the button just flips 0 ↔ 1.
+            $qty = Request::str('qty');
+            if ($qty !== '' && ctype_digit($qty)) {
+                Products::setStock($prod['id'], (int) min((int) $qty, Products::MAX_STOCK));
+            } elseif ($qty === '') {
+                Products::setStock($prod['id'], $prod['inStock'] ? 0 : 1);
+            } else {
+                Session::flash('err', t('admin.formInvalid'));
+            }
         }
         return self::backOr('/admin/products');
     }

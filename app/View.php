@@ -81,8 +81,8 @@ final class View
     public static function simpleMessage(string $code, string $message): string
     {
         return '<!doctype html><html lang="' . e(I18n::lang()) . '"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            . '<title>' . e($code) . ' — ONIKA</title><body style="font:16px/1.6 system-ui,sans-serif;max-width:560px;margin:14vh auto;padding:0 20px;color:#0a1633;text-align:center">'
-            . '<div style="font-size:72px;font-weight:800;background:linear-gradient(135deg,#00c2ff,#1454ff);-webkit-background-clip:text;background-clip:text;color:transparent">' . e($code) . '</div>'
-            . '<p style="color:#5b6785">' . e($message) . '</p><p><a style="color:#1454ff" href="' . e(purl('/')) . '">ONIKA</a></p></body></html>';
+            . '<title>' . e($code) . ' — ONIKA</title><body style="font:16px/1.6 system-ui,sans-serif;max-width:560px;margin:14vh auto;padding:0 20px;color:#3d0f27;text-align:center">'
+            . '<div style="font-size:72px;font-weight:800;background:linear-gradient(135deg,#ff6ba5,#e11d74);-webkit-background-clip:text;background-clip:text;color:transparent">' . e($code) . '</div>'
+            . '<p style="color:#8b5a73">' . e($message) . '</p><p><a style="color:#e11d74" href="' . e(purl('/')) . '">ONIKA</a></p></body></html>';
     }
 }

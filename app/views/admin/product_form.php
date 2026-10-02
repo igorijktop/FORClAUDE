@@ -3,7 +3,7 @@
 use Onika\I18n;
 
 $isNew = $product === null;
-$p = $product ?? ['id' => '', 'name' => '', 'slug' => '', 'price' => '', 'oldPrice' => null, 'category' => '', 'brand' => null, 'description' => '', 'images' => [], 'sizes' => [], 'sku' => '', 'inStock' => true, 'featured' => false, 'active' => true, 'translations' => [], 'views' => 0, 'createdAt' => null, 'updatedAt' => null];
+$p = $product ?? ['id' => '', 'name' => '', 'slug' => '', 'price' => '', 'oldPrice' => null, 'category' => '', 'brand' => null, 'description' => '', 'images' => [], 'sizes' => [], 'sku' => '', 'stock' => 1, 'inStock' => true, 'featured' => false, 'active' => true, 'translations' => [], 'views' => 0, 'createdAt' => null, 'updatedAt' => null];
 $tr = $p['translations'];
 $brandNames = array_column($brands, 'name');
 ?>
@@ -91,7 +91,9 @@ $brandNames = array_column($brands, 'name');
       <div class="a-card-head"><h2><?= e(t('admin.publish')) ?></h2></div>
       <div class="a-card-body form-grid" style="gap:14px">
         <label class="switch"><input type="checkbox" name="active" <?= $p['active'] ? 'checked' : '' ?>><span class="track"></span><?= e(t('admin.published')) ?></label>
-        <label class="switch"><input type="checkbox" name="inStock" <?= $p['inStock'] ? 'checked' : '' ?>><span class="track"></span><?= e(t('admin.inStock')) ?></label>
+        <div class="field"><label for="f-stock"><?= e(t('admin.stockQty')) ?></label>
+          <div class="stock-field"><input id="f-stock" name="stock" type="number" min="0" max="99999" step="1" inputmode="numeric" value="<?= (int) $p['stock'] ?>" required><span class="muted"><?= e(t('admin.pcs')) ?></span></div>
+          <span class="hint"><?= e(t('admin.stockHint')) ?></span></div>
         <label class="switch"><input type="checkbox" name="featured" <?= $p['featured'] ? 'checked' : '' ?>><span class="track"></span><?= e(t('admin.showHome')) ?></label>
         <?php if (!$isNew): ?>
           <div class="field"><label for="f-slug">URL</label><input id="f-slug" name="slug" value="<?= e($p['slug']) ?>" pattern="[a-z0-9\-]+" title="a-z, 0-9, -"><span class="hint"><?= e(t('admin.slugHint')) ?></span></div>

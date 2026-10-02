@@ -32,6 +32,7 @@ final class Api
             'brand' => $p['brand'],
             'category' => I18n::categoryName($p['category']),
             'inStock' => $p['inStock'],
+            'stock' => $p['stock'],
             'sizes' => $p['sizes'],
             'image' => Media::url($p['images'][0] ?? null, 300),
             'url' => url('/product/' . $p['slug']),
@@ -82,11 +83,11 @@ final class Api
             $errors = $r['errors'] ?? [];
             $msg = t('js.orderError');
             if (($errors['items'] ?? '') === 'unavailable') {
-                $msg = t('js.unavailable');
+                $msg = !empty($r['limits']) ? t('js.stockLimit') : t('js.unavailable');
             } elseif (($errors['items'] ?? '') === 'empty') {
                 $msg = t('js.emptyCart');
             }
-            return Response::json(['ok' => false, 'error' => $msg, 'errors' => $errors, 'unavailable' => $r['unavailable'] ?? []], 422);
+            return Response::json(['ok' => false, 'error' => $msg, 'errors' => $errors, 'unavailable' => $r['unavailable'] ?? [], 'limits' => (object) ($r['limits'] ?? [])], 422);
         }
         $o = $r['order'];
         return Response::json([
