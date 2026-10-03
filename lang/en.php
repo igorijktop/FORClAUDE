@@ -562,4 +562,5 @@ Free shipping for orders from {amount}.',
     'admin.stockQty' => 'Quantity in stock',
     'admin.stockHint' => '0 means out of stock. An order lowers the quantity automatically; cancelling the order puts it back.',
     'admin.saveQty' => 'Save quantity',
+    'common.toTop' => 'Back to top',
 ];

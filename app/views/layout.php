@@ -26,7 +26,7 @@ $freeFrom = (int) ($settings['freeShippingFrom'] ?? 0);
 <title><?= e($title) ?></title>
 <meta name="description" content="<?= e($description) ?>">
 <?php if (!empty($meta['noindex'])): ?><meta name="robots" content="noindex, follow"><?php endif ?>
-<meta name="theme-color" content="#e11d74">
+<meta name="theme-color" content="#fff2f8">
 <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
 <link rel="canonical" href="<?= e($canonical) ?>">
 <?php foreach (I18n::SUPPORTED as $l): ?>
@@ -45,9 +45,11 @@ $freeFrom = (int) ($settings['freeShippingFrom'] ?? 0);
 <link rel="apple-touch-icon" href="<?= e(purl('/assets/img/apple-touch-icon.png')) ?>">
 <link rel="preload" href="<?= e(purl('/assets/fonts/onest-cyrillic.woff2')) ?>" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="<?= e(purl('/assets/fonts/onest-latin.woff2')) ?>" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="<?= e(purl('/assets/fonts/cormorant-' . ($lang === 'en' ? 'latin' : 'cyrillic') . '.woff2')) ?>" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= e(asset('fonts/fonts.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/base.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/shop.css')) ?>">
+<link rel="stylesheet" href="<?= e(asset('css/soft.css')) ?>">
 <script nonce="<?= nonce() ?>">
 (function(){var d=document.documentElement;d.classList.remove('no-js');try{var s=localStorage.getItem('onika_theme');
 var dark=s?s==='dark':window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches;d.setAttribute('data-theme',dark?'dark':'light');}catch(e){}})();
@@ -58,6 +60,7 @@ var dark=s?s==='dark':window.matchMedia&&matchMedia('(prefers-color-scheme: dark
 </head>
 <body class="<?= e($bodyClass) ?>">
 <noscript><div style="padding:12px 16px;background:#fdf1dc;color:#7a4b00;text-align:center;font:500 14px system-ui"><?= e(t('js.required')) ?></div></noscript>
+<div class="fx-sky" aria-hidden="true"><i class="fx-blob b1"></i><i class="fx-blob b2"></i><i class="fx-blob b3"></i></div>
 <a class="skip-link" href="#main"><?= e(t('common.skip')) ?></a>
 <?= icon_sprite() ?>
 <?= view('partials/header', ['settings' => $settings, 'categories' => $categories, 'user' => $user, 'active' => $meta['active'] ?? '', 'alts' => $alts]) ?>
@@ -86,5 +89,6 @@ window.ONIKA = <?= json_script([
 ]) ?>;
 </script>
 <script src="<?= e(asset('js/app.js')) ?>" defer></script>
+<script src="<?= e(asset('js/fx.js')) ?>" defer></script>
 </body>
 </html>
