@@ -241,7 +241,7 @@ final class Shop
             'page' => 'catalog',
             'image' => $result['items'][0]['images'][0] ?? 'logo.png',
             // Every page of a listing is its own canonical URL (Google ignores rel=prev/next).
-            'path' => $basePath . ($result['page'] > 1 ? '?page=' . $result['page'] : ''),
+            'path' => $basePath . (($cq = query_string(['featured' => $f['featured'] ?: '', 'page' => $result['page'] > 1 ? $result['page'] : ''])) !== '' ? '?' . $cq : ''),
             'noindex' => $noindex,
             'jsonLd' => [$ld],
             'bodyClass' => 'is-catalog',
@@ -348,7 +348,7 @@ final class Shop
     /** Count one view per visitor session and product (ignoring crawlers). */
     private static function countView(string $id): void
     {
-        if (preg_match('/bot|crawl|spider|slurp|facebookexternalhit|preview/i', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))) {
+        if (Request::method() === 'HEAD' || preg_match('/bot|crawl|spider|slurp|facebookexternalhit|preview/i', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))) {
             return;
         }
         $seen = (array) Session::get('viewed', []);

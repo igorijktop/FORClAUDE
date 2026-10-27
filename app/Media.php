@@ -43,7 +43,7 @@ final class Media
                 return $allowed;
             }
         }
-        return end(self::WIDTHS);
+        return self::WIDTHS[count(self::WIDTHS) - 1];   // not end(): a constant cannot be passed by reference (fatal Error)
     }
 
     public static function url(?string $src, int $width = 600): string
@@ -162,9 +162,10 @@ final class Media
             return false;
         }
         $tmp = $dest . '.' . bin2hex(random_bytes(3)) . '.tmp';
-        $ok = $ext === 'webp' ? imagewebp($im, $tmp, 80) : imagejpeg($im, $tmp, 82);
+        $ok = $ext === 'webp' ? @imagewebp($im, $tmp, 80) : @imagejpeg($im, $tmp, 82);
         imagedestroy($im);
-        if (!$ok) {
+        clearstatcache(true, $tmp);
+        if (!$ok || (int) @filesize($tmp) === 0) {
             @unlink($tmp);
             return false;
         }
@@ -192,6 +193,9 @@ final class Media
         $limit = self::bytes((string) ini_get('memory_limit'));
         if ($limit <= 0 || $need <= $limit) {
             return true;
+        }
+        if ($need > 512 * 1024 * 1024) {      // do not let one photo take the whole server
+            return false;
         }
         return @ini_set('memory_limit', (string) $need) !== false && self::bytes((string) ini_get('memory_limit')) >= $need;
     }
@@ -222,6 +226,12 @@ final class Media
         $im = $data === false ? false : @imagecreatefromstring($data);
         if (!$im) {
             return null;
+        }
+        // GIFs / 8-bit PNGs are palette images: imagewebp() refuses them and writes an empty file.
+        if (!imageistruecolor($im)) {
+            imagepalettetotruecolor($im);
+            imagealphablending($im, false);
+            imagesavealpha($im, true);
         }
         if ($info[2] === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
             $exif = @exif_read_data($path);

@@ -113,7 +113,7 @@ final class Brands
         }
         Db::tx(function () use ($id, $cur, $name, $in, $tr): void {
             if ($name !== $cur['name']) {
-                Db::exec('UPDATE products SET brand = ?, search_blob = search_blob || ? WHERE brand = ?', [$name, ' ' . Text::lower($name), $cur['name']]);
+                Db::exec('UPDATE products SET brand = ?, search_blob = search_blob || ? WHERE brand = ?', [$name, ' ' . Text::searchNorm(Text::lower($name)), $cur['name']]);
             }
             Db::exec(
                 'UPDATE brands SET name=?, description=?, translations=? WHERE id=?',

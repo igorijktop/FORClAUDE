@@ -11,7 +11,7 @@ if (PHP_SAPI === 'cli-server') {
     $reqPath = explode('?', (string) $_SERVER['REQUEST_URI'], 2)[0];
     $file = __DIR__ . rawurldecode($reqPath);
     // Mirrors the .htaccess rules: internal folders and config files are never served.
-    $internal = (bool) preg_match('#^/(app|data|lang|tools)(/|$)|^/config(\.local)?\.php$|/\.#', $reqPath);
+    $internal = (bool) preg_match('#^/(app|data|dist|lang|tools)(/|$)|^/config(\.local)?\.php$|/\.#', $reqPath);
     if ($reqPath !== '/' && !$internal && is_file($file) && !str_ends_with($file, '.php')) {
         return false;
     }
@@ -26,9 +26,14 @@ use Onika\Router;
 
 Request::init();
 
-[$lang, $clean] = I18n::fromPath(Request::path());
 $qs = (string) ($_SERVER['QUERY_STRING'] ?? '');
 $isGet = in_array(Request::method(), ['GET', 'HEAD'], true);
+// "/RU/catalog", "/En" → the lower-case language prefix.
+if ($isGet && preg_match('#^/(ru|en|uk)(?=/|$)#i', Request::path(), $lm) && $lm[1] !== strtolower($lm[1])) {
+    Request::setPath('/' . strtolower($lm[1]) . substr(Request::path(), 3));
+    Request::markMessy();
+}
+[$lang, $clean] = I18n::fromPath(Request::path());
 
 // One canonical URL per page: "/uk/…" is the same as "/…", and "/catalog/", "//catalog" are "/catalog".
 // (Only GET/HEAD: redirecting a POST would lose its body.)

@@ -132,7 +132,7 @@ final class Categories
         }
         Db::tx(function () use ($id, $cur, $name, $in, $tr): void {
             if ($name !== $cur['name']) {
-                Db::exec('UPDATE products SET category = ?, search_blob = search_blob || ? WHERE category = ?', [$name, ' ' . Text::lower($name), $cur['name']]);
+                Db::exec('UPDATE products SET category = ?, search_blob = search_blob || ? WHERE category = ?', [$name, ' ' . Text::searchNorm(Text::lower($name)), $cur['name']]);
             }
             Db::exec(
                 'UPDATE categories SET name=?, description=?, color=?, translations=? WHERE id=?',

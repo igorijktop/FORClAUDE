@@ -7,7 +7,7 @@ AddDefaultCharset UTF-8
   RewriteEngine On
 
   # Internal folders and config are never public.
-  RewriteRule ^(app|data|lang|tools)(/|$) - [F,L]
+  RewriteRule ^(app|data|dist|lang|tools)(/|$) - [F,L]
   RewriteRule ^config(\.local)?\.php$ - [F,L]
   RewriteRule (^|/)\.(git|ht) - [F,L]
 

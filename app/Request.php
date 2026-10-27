@@ -11,6 +11,7 @@ final class Request
     private static string $path = '/';
     /** Path as requested (after the base), before slashes were tidied up. */
     private static string $rawPath = '/';
+    private static bool $messy = false;
 
     /** Detect the sub-folder the app lives in (e.g. "/onika" under XAMPP htdocs). */
     public static function init(): void
@@ -48,10 +49,16 @@ final class Request
         return self::$base;
     }
 
+    /** Force a canonical redirect even though the slashes are tidy (e.g. "/RU/catalog"). */
+    public static function markMessy(): void
+    {
+        self::$messy = true;
+    }
+
     /** Whether the requested path differs from its tidy form ("/catalog/", "//catalog", "/index.php"). */
     public static function rawPathIsMessy(): bool
     {
-        return self::$rawPath !== self::$path && (self::$path !== '/' || self::$rawPath === '/index.php');
+        return self::$messy || (self::$rawPath !== self::$path && (self::$path !== '/' || self::$rawPath === '/index.php'));
     }
 
     /** Percent-encode every segment of an app path for a Location header (slugs may be Cyrillic). */
