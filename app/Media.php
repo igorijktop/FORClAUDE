@@ -84,26 +84,54 @@ final class Media
     /* ---------------------------------------------------------- resize on demand */
     public static function serve(int $width, string $dir, string $file): Response
     {
-        $ext = strtolower((string) pathinfo($file, PATHINFO_EXTENSION));
+        $ext = (string) pathinfo($file, PATHINFO_EXTENSION);
         $orig = substr($file, 0, -(strlen($ext) + 1));
+        $srcExt = strtolower((string) pathinfo($orig, PATHINFO_EXTENSION));
+        // Only "<photo>.<jpg|png|gif|webp>.<webp|jpg>" — never ".htaccess", ".gitkeep" or other files of these folders.
         if (!in_array($dir, ['images', 'uploads'], true) || !in_array($ext, ['webp', 'jpg'], true)
-            || !in_array($width, self::WIDTHS, true) || !preg_match('/^[A-Za-z0-9._-]+$/', $orig) || str_contains($orig, '..')) {
-            return Response::text('Not found', 'text/plain', 404);
+            || !in_array($width, self::WIDTHS, true) || !preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/', $orig)
+            || str_contains($orig, '..') || !in_array($srcExt, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+            return self::notFound();
         }
         $src = ROOT . "/$dir/$orig";
         if (!is_file($src)) {
-            return Response::text('Not found', 'text/plain', 404);
+            return self::notFound();
         }
         $dest = MEDIA_DIR . "/$width/$dir/$file";
-        if (!is_file($dest)) {
-            if (!self::resize($src, $dest, $width, $ext)) {
-                // Could not resize (no GD support for this type…) → serve original.
-                $mime = (string) (new \finfo(FILEINFO_MIME_TYPE))->file($src);
-                return Response::file($src, $mime ?: 'application/octet-stream')->cache(86400);
+        if (!is_file($dest) && !self::resize($src, $dest, $width, $ext)) {
+            // Could not resize (no GD support for this type, too big for memory…) → serve the original if it is an image.
+            $mime = (string) (new \finfo(FILEINFO_MIME_TYPE))->file($src);
+            if (!in_array($mime, ['image/jpeg', 'image/png', 'image/gif', 'image/webp'], true)) {
+                return self::notFound();
             }
+            return self::conditional(Response::file($src, $mime)->cache(86400), $src);
         }
-        return Response::file($dest, $ext === 'webp' ? 'image/webp' : 'image/jpeg')
-            ->header('Cache-Control', 'public, max-age=31536000, immutable');
+        return self::conditional(
+            Response::file($dest, $ext === 'webp' ? 'image/webp' : 'image/jpeg')->header('Cache-Control', 'public, max-age=31536000, immutable'),
+            $dest
+        );
+    }
+
+    private static function notFound(): Response
+    {
+        return Response::text('Not found', 'text/plain; charset=utf-8', 404)->header('Cache-Control', 'no-store');
+    }
+
+    /** Last-Modified / ETag validators and a bodiless 304 when the browser already has this file. */
+    private static function conditional(Response $r, string $path): Response
+    {
+        $mtime = (int) @filemtime($path);
+        $etag = '"' . dechex($mtime) . '-' . dechex((int) @filesize($path)) . '"';
+        $r->header('Last-Modified', gmdate('D, d M Y H:i:s', $mtime) . ' GMT')->header('ETag', $etag);
+        $inm = (string) ($_SERVER['HTTP_IF_NONE_MATCH'] ?? '');
+        $ims = (string) ($_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '');
+        $fresh = $inm !== ''
+            ? in_array($etag, array_map('trim', explode(',', $inm)), true) || trim($inm) === '*'
+            : ($ims !== '' && ($t = strtotime($ims)) !== false && $t >= $mtime);
+        if ($fresh) {
+            $r->withStatus(304)->body = '';
+        }
+        return $r;
     }
 
     private static function resize(string $src, string $dest, int $width, string $ext): bool
@@ -154,11 +182,40 @@ final class Media
         }
     }
 
+    /**
+     * Make sure decoding a $w × $h picture (plus a resized copy) fits into memory_limit, raising the limit
+     * when allowed. Without this a huge photo ends in a fatal "Allowed memory size exhausted".
+     */
+    private static function memoryFor(int $w, int $h): bool
+    {
+        $need = (int) ($w * $h * 5 * 1.7) + memory_get_usage() + 16 * 1024 * 1024;
+        $limit = self::bytes((string) ini_get('memory_limit'));
+        if ($limit <= 0 || $need <= $limit) {
+            return true;
+        }
+        return @ini_set('memory_limit', (string) $need) !== false && self::bytes((string) ini_get('memory_limit')) >= $need;
+    }
+
+    private static function bytes(string $v): int
+    {
+        $v = trim($v);
+        if ($v === '' || $v === '-1') {
+            return -1;
+        }
+        $n = (int) $v;
+        return match (strtolower(substr($v, -1))) {
+            'g' => $n * 1024 ** 3,
+            'm' => $n * 1024 ** 2,
+            'k' => $n * 1024,
+            default => $n,
+        };
+    }
+
     /** Decode any GD-supported image and apply EXIF orientation. */
     private static function load(string $path): ?\GdImage
     {
         $info = @getimagesize($path);
-        if (!$info || $info[0] < 1 || $info[1] < 1 || $info[0] * $info[1] > 60_000_000) {
+        if (!$info || $info[0] < 1 || $info[1] < 1 || $info[0] * $info[1] > 60_000_000 || !self::memoryFor($info[0], $info[1])) {
             return null;
         }
         $data = @file_get_contents($path);

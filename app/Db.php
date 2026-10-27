@@ -10,6 +10,9 @@ use PDOStatement;
 final class Db
 {
     private static ?PDO $pdo = null;
+    /** Open transactions started with immediate() (PDO does not see a BEGIN it did not issue). */
+    private static int $depth = 0;
+    private static int $version = 0;
 
     public static function file(): string
     {
@@ -40,13 +43,23 @@ final class Db
     public static function close(): void
     {
         self::$pdo = null;
+        self::$version++;
     }
 
     public static function run(string $sql, array $params = []): PDOStatement
     {
         $st = self::pdo()->prepare($sql);
         $st->execute($params);
+        if (!$st->columnCount()) {      // INSERT / UPDATE / DELETE…: per-request caches must be rebuilt
+            self::$version++;
+        }
         return $st;
+    }
+
+    /** Changes every time a statement that returns no rows (a write) runs; used to invalidate memoised reads. */
+    public static function version(): int
+    {
+        return self::$version;
     }
 
     /** @return list<array<string,mixed>> */
@@ -82,7 +95,7 @@ final class Db
     public static function tx(callable $fn): mixed
     {
         $pdo = self::pdo();
-        if ($pdo->inTransaction()) {
+        if (self::$depth > 0 || $pdo->inTransaction()) {
             return $fn();
         }
         $pdo->beginTransaction();
@@ -95,6 +108,33 @@ final class Db
                 $pdo->rollBack();
             }
             throw $e;
+        }
+    }
+
+    /**
+     * Like tx(), but takes the write lock up front (BEGIN IMMEDIATE): a second process waits
+     * (busy_timeout) instead of failing half-way, and sees the first one's changes.
+     */
+    public static function immediate(PDO $pdo, callable $fn): mixed
+    {
+        if (self::$depth > 0 || $pdo->inTransaction()) {
+            return $fn();
+        }
+        $pdo->exec('BEGIN IMMEDIATE');
+        self::$depth++;
+        try {
+            $r = $fn();
+            $pdo->exec('COMMIT');
+            return $r;
+        } catch (\Throwable $e) {
+            try {
+                $pdo->exec('ROLLBACK');
+            } catch (\PDOException) {
+                // SQLite may already have rolled back on its own (e.g. disk full).
+            }
+            throw $e;
+        } finally {
+            self::$depth--;
         }
     }
 

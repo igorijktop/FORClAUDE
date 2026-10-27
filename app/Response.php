@@ -33,7 +33,7 @@ final class Response
     public static function json(mixed $data, int $status = 200): self
     {
         return new self(
-            (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE),
+            (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_PARTIAL_OUTPUT_ON_ERROR),
             $status,
             'application/json; charset=utf-8'
         );
@@ -59,7 +59,7 @@ final class Response
 
     public static function notFound(): self
     {
-        if (Request::isAjax() && str_starts_with(Request::path(), '/api/')) {
+        if (str_starts_with(Request::path(), '/api/')) {
             return self::json(['ok' => false, 'error' => 'not_found'], 404);
         }
         return \Onika\View::notFoundPage();

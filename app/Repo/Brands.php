@@ -23,15 +23,21 @@ final class Brands
         ];
     }
 
+    /** Memoised until the next database write (the storefront asks several times per page). */
     public static function all(): array
     {
+        static $memo = null, $at = -1;
+        if ($memo !== null && $at === Db::version()) {
+            return $memo;
+        }
         $rows = Db::all(
             'SELECT b.*,
                     (SELECT COUNT(*) FROM products p WHERE p.brand = b.name AND p.active = 1) AS cnt,
                     (SELECT COUNT(*) FROM products p WHERE p.brand = b.name) AS total
              FROM brands b ORDER BY b.sort_order ASC, b.name ASC'
         );
-        return array_map([self::class, 'hydrate'], $rows);
+        $at = Db::version();
+        return $memo = array_map([self::class, 'hydrate'], $rows);
     }
 
     /** Storefront brands (active with visible products), ordered by product count. */

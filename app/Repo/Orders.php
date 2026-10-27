@@ -37,29 +37,28 @@ final class Orders
     public static function create(array $p, ?string $userId): array
     {
         $errors = [];
-        $name = Text::truncate((string) ($p['name'] ?? ''), 100);
+        $name = Text::line($p['name'] ?? '', 100);
         if (mb_strlen($name) < 2) {
             $errors['name'] = 'required';
         }
-        $phone = trim((string) ($p['phone'] ?? ''));
-        $digits = Text::phoneDigits($phone);
-        if (strlen($digits) < 10 || strlen($digits) > 15) {
+        $phone = Text::phone(Text::line($p['phone'] ?? '', 40));
+        if ($phone === null) {
             $errors['phone'] = 'invalid';
         }
-        $email = trim((string) ($p['email'] ?? ''));
+        $email = Text::line($p['email'] ?? '', 190);
         if ($email !== '' && !Text::isEmail($email)) {
             $errors['email'] = 'invalid';
         }
-        $ship = (string) ($p['shippingMethod'] ?? 'np_branch');
+        $ship = Text::line($p['shippingMethod'] ?? 'np_branch', 40);
         if (!in_array($ship, self::SHIPPING, true)) {
             $ship = 'np_branch';
         }
-        $pay = (string) ($p['payment'] ?? 'cod');
+        $pay = Text::line($p['payment'] ?? 'cod', 40);
         if (!in_array($pay, self::PAYMENT, true)) {
             $pay = 'cod';
         }
-        $city = Text::truncate((string) ($p['city'] ?? ''), 100);
-        $warehouse = Text::truncate((string) ($p['warehouse'] ?? ''), 160);
+        $city = Text::line($p['city'] ?? '', 100);
+        $warehouse = Text::line($p['warehouse'] ?? '', 160);
         if ($ship !== 'pickup') {
             if (mb_strlen($city) < 2) {
                 $errors['city'] = 'required';
@@ -68,7 +67,7 @@ final class Orders
                 $errors['warehouse'] = 'required';
             }
         }
-        $comment = mb_substr(Text::clean((string) ($p['comment'] ?? '')), 0, 1000);
+        $comment = is_scalar($p['comment'] ?? '') ? mb_substr(Text::clean(mb_scrub((string) ($p['comment'] ?? ''), 'UTF-8')), 0, 1000) : '';
 
         $rawItems = $p['items'] ?? [];
         if (!is_array($rawItems) || !$rawItems || count($rawItems) > 50) {
@@ -84,9 +83,12 @@ final class Orders
                 if (!is_array($it)) {
                     continue;
                 }
-                $id = (string) ($it['id'] ?? '');
-                $size = trim((string) ($it['size'] ?? ''));
-                $qty = max(1, min(99, (int) ($it['qty'] ?? 1)));
+                $id = Text::line($it['id'] ?? '', 64);
+                $size = Text::line($it['size'] ?? '', 20);
+                $qty = is_numeric($it['qty'] ?? 1) ? max(1, min(99, (int) $it['qty'])) : 1;
+                if ($id === '') {
+                    continue;
+                }
                 $key = $id . '|' . $size;
                 $merged[$key] = ['id' => $id, 'size' => $size, 'qty' => min(99, ($merged[$key]['qty'] ?? 0) + $qty)];
             }
@@ -118,7 +120,12 @@ final class Orders
                     }
                     $size = $it['size'];
                 }
-                $items[] = [
+                $line = $prod['id'] . '|' . $size;
+                if (isset($items[$line])) {      // same sizeless product sent twice with different "sizes"
+                    $items[$line]['qty'] = min(99, $items[$line]['qty'] + $it['qty']);
+                    continue;
+                }
+                $items[$line] = [
                     'id' => $prod['id'],
                     'slug' => $prod['slug'],
                     'name' => $prod['name'],
@@ -128,6 +135,8 @@ final class Orders
                     'size' => $size,
                 ];
             }
+            $items = array_values($items);
+            $unavailable = array_values(array_unique($unavailable));
             if ($unavailable) {
                 $errors['items'] = 'unavailable';
             } elseif (!$items) {
@@ -142,10 +151,11 @@ final class Orders
         foreach ($items as $it) {
             $subtotal += $it['price'] * $it['qty'];
         }
+        $subtotal = round($subtotal, 2);
         $free = (float) Settings::get('freeShippingFrom', 0);
         // Carrier tariffs are unknown to the shop: shipping is 0 (free) or null ("by carrier tariff").
         $shipping = ($ship === 'pickup' || ($free > 0 && $subtotal >= $free)) ? 0.0 : null;
-        $total = $subtotal + ($shipping ?? 0.0);
+        $total = round($subtotal + ($shipping ?? 0.0), 2);
 
         $id = self::newId();
         $token = bin2hex(random_bytes(12));

@@ -9,12 +9,16 @@ final class Request
     private static ?array $json = null;
     private static string $base = '';
     private static string $path = '/';
+    /** Path as requested (after the base), before slashes were tidied up. */
+    private static string $rawPath = '/';
 
     /** Detect the sub-folder the app lives in (e.g. "/onika" under XAMPP htdocs). */
     public static function init(): void
     {
         $script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
-        $uri = rawurldecode((string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH));
+        // Not parse_url(): it reads "//catalog" as a host name and loses the path.
+        $uri = rawurldecode(explode('?', (string) ($_SERVER['REQUEST_URI'] ?? '/'), 2)[0]);
+        $uri = (string) preg_replace('#^[a-z][a-z0-9+.-]*://[^/]*#i', '', $uri);   // absolute-form request target
 
         // Under Apache (rewrite → index.php) SCRIPT_NAME is "<base>/index.php". The PHP built-in server
         // in router mode reports the request path instead, in which case the app lives at the root.
@@ -26,11 +30,15 @@ final class Request
             self::$base = '';
             $path = $uri;
         }
+        self::$rawPath = $path === '' ? '/' : (string) $path;
         $path = '/' . ltrim((string) $path, '/');
         // Collapse duplicate slashes, remove trailing slash (except root).
         $path = preg_replace('#/{2,}#', '/', $path) ?? $path;
         if ($path !== '/' && substr($path, -1) === '/') {
             $path = rtrim($path, '/');
+        }
+        if ($path === '/index.php') {
+            $path = '/';
         }
         self::$path = $path;
     }
@@ -38,6 +46,18 @@ final class Request
     public static function base(): string
     {
         return self::$base;
+    }
+
+    /** Whether the requested path differs from its tidy form ("/catalog/", "//catalog", "/index.php"). */
+    public static function rawPathIsMessy(): bool
+    {
+        return self::$rawPath !== self::$path && (self::$path !== '/' || self::$rawPath === '/index.php');
+    }
+
+    /** Percent-encode every segment of an app path for a Location header (slugs may be Cyrillic). */
+    public static function encodePath(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
     }
 
     /** Request path relative to the app base (no query string), always starts with "/". */
@@ -129,6 +149,20 @@ final class Request
     public static function str(string $key, string $default = ''): string
     {
         $v = self::input($key, $default);
+        return is_scalar($v) ? trim((string) $v) : $default;
+    }
+
+    /** Raw body value as a string, not trimmed (passwords, long texts); arrays/objects give $default. */
+    public static function text(string $key, string $default = ''): string
+    {
+        $v = self::input($key, $default);
+        return is_scalar($v) ? (string) $v : $default;
+    }
+
+    /** Query-string value as a trimmed string; arrays (?q[]=x) give $default instead of a warning. */
+    public static function queryStr(string $key, string $default = ''): string
+    {
+        $v = $_GET[$key] ?? $default;
         return is_scalar($v) ? trim((string) $v) : $default;
     }
 

@@ -26,16 +26,21 @@ final class Categories
         ];
     }
 
-    /** All categories (admin), with active/total product counts. */
+    /** All categories (admin), with active/total product counts. Memoised until the next database write. */
     public static function all(): array
     {
+        static $memo = null, $at = -1;
+        if ($memo !== null && $at === Db::version()) {
+            return $memo;
+        }
         $rows = Db::all(
             'SELECT c.*,
                     (SELECT COUNT(*) FROM products p WHERE p.category = c.name AND p.active = 1) AS cnt,
                     (SELECT COUNT(*) FROM products p WHERE p.category = c.name) AS total
              FROM categories c ORDER BY c.sort_order ASC, c.name ASC'
         );
-        return array_map([self::class, 'hydrate'], $rows);
+        $at = Db::version();
+        return $memo = array_map([self::class, 'hydrate'], $rows);
     }
 
     /** Storefront categories: active and containing at least one visible product. */

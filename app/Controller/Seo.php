@@ -15,10 +15,19 @@ final class Seo
     {
         $base = Request::origin();
         $b = Request::base();
-        $txt = "User-agent: *\nAllow: /\n"
-            . "Disallow: {$b}/admin\nDisallow: {$b}/api\nDisallow: {$b}/checkout\nDisallow: {$b}/cart\nDisallow: {$b}/order/\nDisallow: {$b}/account\n\n"
-            . "Sitemap: {$base}/sitemap.xml\n";
-        return Response::text($txt);
+        $txt = "User-agent: *\nAllow: /\n";
+        foreach (['/admin', '/api/'] as $path) {
+            $txt .= "Disallow: {$b}{$path}\n";
+        }
+        // Private pages exist in every language: /cart, /ru/cart, /en/cart…
+        foreach (I18n::SUPPORTED as $l) {
+            $pre = $b . I18n::prefix($l);
+            foreach (['/checkout', '/cart', '/order/', '/account'] as $path) {
+                $txt .= "Disallow: {$pre}{$path}\n";
+            }
+        }
+        $txt .= "\nSitemap: {$base}/sitemap.xml\n";
+        return Response::text($txt)->cache(3600);
     }
 
     public static function sitemap(array $p): Response
@@ -34,7 +43,7 @@ final class Seo
             $links .= '    <xhtml:link rel="alternate" hreflang="x-default" href="' . htmlspecialchars($origin . $alts['uk'], ENT_XML1) . '"/>' . "\n";
             foreach (I18n::SUPPORTED as $l) {
                 $urls[] = "  <url>\n    <loc>" . htmlspecialchars($origin . $alts[$l], ENT_XML1) . "</loc>\n" . $links
-                    . ($lastmod ? "    <lastmod>{$lastmod}</lastmod>\n" : '')
+                    . ($lastmod !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $lastmod) ? "    <lastmod>{$lastmod}</lastmod>\n" : '')
                     . "    <changefreq>{$freq}</changefreq>\n    <priority>{$prio}</priority>\n  </url>";
             }
         };
@@ -45,7 +54,7 @@ final class Seo
         foreach (Categories::visible() as $c) {
             $add('/catalog/' . $c['slug'], '0.7', 'weekly');
         }
-        $rows = Db::all('SELECT slug, COALESCE(updated_at, created_at) AS ts FROM products WHERE active = 1 AND category NOT IN (SELECT name FROM categories WHERE active = 0) ORDER BY created_at DESC');
+        $rows = Db::all("SELECT slug, COALESCE(updated_at, created_at) AS ts FROM products WHERE active = 1 AND COALESCE(category, '') NOT IN (SELECT name FROM categories WHERE active = 0) ORDER BY created_at DESC");
         foreach ($rows as $r) {
             $add('/product/' . rawurlencode((string) $r['slug']), '0.8', 'weekly', $r['ts'] ? substr((string) $r['ts'], 0, 10) : null);
         }

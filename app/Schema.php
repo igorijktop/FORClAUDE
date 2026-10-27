@@ -6,32 +6,43 @@ namespace Onika;
 /** Database schema + versioned migrations (PRAGMA user_version). */
 final class Schema
 {
-    private const VERSION = 2;
+    private const VERSION = 3;
 
     public static function migrate(bool $fresh): void
     {
         $pdo = Db::pdo();
-        $v = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
-        if ($v >= self::VERSION) {
+        if ((int) $pdo->query('PRAGMA user_version')->fetchColumn() >= self::VERSION) {
             return;
         }
-        $pdo->beginTransaction();
-        try {
+        // BEGIN IMMEDIATE takes the write lock first, so two requests hitting a new database at the same
+        // moment run the migrations one after the other; the second one then sees the new version and stops.
+        Db::immediate($pdo, static function () use ($pdo, $fresh): void {
+            $v = (int) $pdo->query('PRAGMA user_version')->fetchColumn();
+            if ($v >= self::VERSION) {
+                return;
+            }
             if ($v < 1) {
                 self::v1($pdo);
             }
             if ($v < 2) {
                 self::v2($pdo);
             }
+            if ($v < 3) {
+                self::v3($pdo);
+            }
             $pdo->exec('PRAGMA user_version = ' . self::VERSION);
-            $pdo->commit();
-        } catch (\Throwable $e) {
-            $pdo->rollBack();
-            throw $e;
-        }
-        if ($fresh || (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn() === 0) {
-            Seeder::run();
-        }
+            if ($fresh || (int) $pdo->query('SELECT COUNT(*) FROM products')->fetchColumn() === 0) {
+                Seeder::run();
+            }
+        });
+    }
+
+    /** Search text: "ё" stored as "е" and one apostrophe form (see Text::searchNorm); index for "my orders". */
+    private static function v3(\PDO $pdo): void
+    {
+        $pdo->exec("UPDATE products SET search_blob = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(search_blob,
+            'ё', 'е'), '’', ''''), 'ʼ', ''''), '`', ''''), '´', ''''), '‘', '''')");
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_o_user_created ON orders(user_id, created_at)');
     }
 
     /** Stock quantity per product. Products that were "in stock" get 1 piece, the others 0. */

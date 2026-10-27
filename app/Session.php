@@ -34,7 +34,12 @@ final class Session
         ini_set('session.gc_divisor', '100');
         ini_set('session.use_strict_mode', '1');
         ini_set('session.use_only_cookies', '1');
-        session_name((string) cfg('session_name', 'onika_sid'));
+        $name = (string) cfg('session_name', 'onika_sid');
+        session_name($name);
+        // A forged/garbled cookie ("../x", 500 chars, an array) makes session_start() warn: start a fresh session instead.
+        if (isset($_COOKIE[$name]) && (!is_string($_COOKIE[$name]) || !preg_match('/^[A-Za-z0-9,-]{22,128}$/', $_COOKIE[$name]))) {
+            unset($_COOKIE[$name]);
+        }
         $base = Request::base();
         session_set_cookie_params([
             'lifetime' => $life,
@@ -87,11 +92,11 @@ final class Session
     public static function checkCsrf(?string $token = null): bool
     {
         self::start();
-        $token ??= (string) (Request::input('_csrf') ?? Request::header('X-CSRF-Token'));
+        $token ??= Request::text('_csrf');
         if ($token === '') {
             $token = Request::header('X-CSRF-Token');
         }
-        return isset($_SESSION['_csrf']) && $token !== '' && hash_equals((string) $_SESSION['_csrf'], $token);
+        return is_string($_SESSION['_csrf'] ?? null) && $token !== '' && hash_equals($_SESSION['_csrf'], $token);
     }
 
     /** Abort with 403 (or JSON error) when the CSRF token is missing/invalid. */

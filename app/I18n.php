@@ -50,6 +50,39 @@ final class I18n
         return ['uk', $path];
     }
 
+    /**
+     * Language for a request whose URL carries no prefix (the JSON API): an explicit ?lang=xx,
+     * otherwise the language of the same-site page in the Referer, otherwise $default.
+     */
+    public static function fromRequest(string $default = 'uk'): string
+    {
+        $q = $_GET['lang'] ?? null;
+        if (is_string($q) && in_array($q, self::SUPPORTED, true)) {
+            return $q;
+        }
+        $ref = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+        if ($ref === '') {
+            return $default;
+        }
+        $u = parse_url($ref);
+        if (!is_array($u)) {
+            return $default;
+        }
+        $host = ($u['host'] ?? '') . (isset($u['port']) ? ':' . $u['port'] : '');
+        if (strcasecmp($host, Request::host()) !== 0) {
+            return $default;
+        }
+        $path = rawurldecode((string) ($u['path'] ?? '/'));
+        $base = Request::base();
+        if ($base !== '') {
+            if ($path !== $base && !str_starts_with($path, $base . '/')) {
+                return $default;
+            }
+            $path = substr($path, strlen($base));
+        }
+        return self::fromPath('/' . ltrim($path, '/'))[0];
+    }
+
     /* ------------------------------------------------------------- dictionary */
     private static function load(string $lang): array
     {
