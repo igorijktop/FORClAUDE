@@ -8,12 +8,12 @@ $filtered = $f['q'] !== '' || $f['category'] || $f['brand'] || $f['status'] !== 
 <div class="a-toolbar">
   <form method="get" class="a-filters" role="search">
     <div class="a-search"><?= icon('search') ?><input type="search" name="q" value="<?= e($f['q']) ?>" placeholder="<?= e(t('admin.searchProduct')) ?>" aria-label="<?= e(t('common.search')) ?>"></div>
-    <select name="category" aria-label="<?= e(t('admin.category')) ?>"><option value=""><?= e(t('admin.allCategories')) ?></option>
+    <select name="category" data-autosubmit aria-label="<?= e(t('admin.category')) ?>"><option value=""><?= e(t('admin.allCategories')) ?></option>
       <?php foreach ($categories as $c): ?><option value="<?= e($c['name']) ?>" <?= ($query['category'] ?? '') === $c['name'] ? 'selected' : '' ?>><?= e(I18n::categoryLabel($c)) ?> (<?= (int) $c['total'] ?>)</option><?php endforeach ?></select>
-    <select name="brand" aria-label="<?= e(t('admin.brand')) ?>"><option value=""><?= e(t('admin.allBrands')) ?></option>
+    <select name="brand" data-autosubmit aria-label="<?= e(t('admin.brand')) ?>"><option value=""><?= e(t('admin.allBrands')) ?></option>
       <?php foreach ($brands as $b): ?><option value="<?= e($b['name']) ?>" <?= ($query['brand'] ?? '') === $b['name'] ? 'selected' : '' ?>><?= e($b['name']) ?></option><?php endforeach ?></select>
-    <select name="status" aria-label="<?= e(t('admin.status')) ?>"><?php foreach ($statusOpts as $k => $lbl): ?><option value="<?= $k ?>" <?= $f['status'] === $k ? 'selected' : '' ?>><?= e($lbl) ?></option><?php endforeach ?></select>
-    <select name="sort" aria-label="<?= e(t('sort.label')) ?>">
+    <select name="status" data-autosubmit aria-label="<?= e(t('admin.status')) ?>"><?php foreach ($statusOpts as $k => $lbl): ?><option value="<?= $k ?>" <?= $f['status'] === $k ? 'selected' : '' ?>><?= e($lbl) ?></option><?php endforeach ?></select>
+    <select name="sort" data-autosubmit aria-label="<?= e(t('sort.label')) ?>">
       <?php foreach (['new' => 'sort.new', 'popular' => 'sort.popular', 'price-asc' => 'sort.priceAsc', 'price-desc' => 'sort.priceDesc', 'name' => 'sort.name'] as $k => $l): ?><option value="<?= $k ?>" <?= $f['sort'] === $k ? 'selected' : '' ?>><?= e(t($l)) ?></option><?php endforeach ?></select>
     <button class="btn btn-ghost btn-sm" type="submit"><?= icon('filter') ?> <?= e(t('admin.filter')) ?></button>
     <?php if ($filtered): ?><a href="<?= e(purl('/admin/products')) ?>" class="btn btn-ghost btn-sm a-reset"><?= icon('x') ?> <?= e(t('admin.resetFilters')) ?></a><?php endif ?>

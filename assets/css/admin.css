@@ -34,9 +34,10 @@ body.admin, body.admin-auth {
 :root[data-theme='dark'] .a-blob.b3 { --c: rgba(140, 90, 230, .12); }
 
 /* --------------------------------------------------------------- focus */
-.admin :focus-visible, .admin-auth :focus-visible { outline: none; box-shadow: var(--a-focus); border-radius: 12px; }
-.admin input:focus-visible, .admin select:focus-visible, .admin textarea:focus-visible,
-.admin-auth input:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 22%, transparent); border-color: var(--brand); border-radius: var(--r); }
+.admin :focus-visible:not(input, select, textarea), .admin-auth :focus-visible:not(input, select, textarea) { outline: none; box-shadow: var(--a-focus); border-radius: 12px; }
+/* :not(#_) lifts these above base.css's long input:not(...) selector, which otherwise wins on border colour */
+.admin input:focus:not(#_), .admin select:focus:not(#_), .admin textarea:focus:not(#_),
+.admin-auth input:focus:not(#_) { box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand) 22%, transparent); border-color: var(--brand); }
 .skip-link:focus { z-index: 600; }
 
 /* --------------------------------------------------------------- shell */
@@ -239,9 +240,9 @@ a.a-stat:hover .a-stat-go, a.a-stat:focus-visible .a-stat-go { opacity: 1; trans
 .a-status-cell .badge .ic { width: 12px; height: 12px; }
 .stock-form { display: flex; align-items: center; gap: 4px; margin: 0; }
 .stock-form [hidden] { display: none; }
-.admin .stock-input { width: 82px; min-height: 38px; padding: 0 6px; text-align: center; font-weight: 700; border-radius: 12px; font-variant-numeric: tabular-nums; }
-.admin .stock-input.is-zero, .admin #f-stock.is-zero { color: var(--a-bad); border-color: color-mix(in srgb, var(--danger) 60%, transparent); background: var(--danger-50); }
-.admin .stock-input.is-bad { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-50); }
+.admin input.stock-input:not(#_) { width: 84px; min-height: 38px; padding: 0 6px; text-align: center; font-weight: 700; border-radius: 12px; font-variant-numeric: tabular-nums; }
+.admin input.stock-input.is-zero:not(#_), .admin #f-stock.is-zero { color: var(--a-bad); border-color: color-mix(in srgb, var(--danger) 60%, transparent); background: var(--danger-50); }
+.admin input.stock-input.is-bad:not(#_) { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-50); }
 .a-stock-save { background: var(--a-grad); color: #fff !important; box-shadow: 0 6px 14px -6px rgba(214, 51, 132, .7); }
 .a-stock-save:hover { background: var(--a-grad); filter: brightness(1.06); }
 .a-stock-note { font-size: 12px; font-weight: 600; color: var(--a-bad); margin-top: 4px; }
@@ -304,7 +305,7 @@ code, .a-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mono
 .admin .hint .ic { width: 14px; height: 14px; display: inline-block; vertical-align: -2px; color: var(--brand); }
 .admin .field .err { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--a-bad); }
 .admin .field .err .ic { width: 15px; height: 15px; }
-.admin .field.has-error input, .admin .field.has-error select, .admin .field.has-error textarea { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-50); background: color-mix(in srgb, var(--danger-50) 35%, var(--surface)); }
+.admin .field.has-error :is(input, select, textarea):not(#_) { border-color: var(--danger); box-shadow: 0 0 0 4px var(--danger-50); background: color-mix(in srgb, var(--danger-50) 35%, var(--surface)); }
 .admin .field.has-error > label { color: var(--a-bad); }
 .a-lang-block { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r); background: color-mix(in srgb, var(--surface-2) 60%, transparent); margin: 0; min-width: 0; }
 .a-lang-block legend { font-size: 13px; font-weight: 700; color: var(--ink); padding: 0 8px; letter-spacing: .01em; }
@@ -534,26 +535,28 @@ code, .a-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mono
   .a-pagination a, .a-pagination span { min-width: 38px; height: 38px; }
   .admin .toast-wrap { right: 50%; transform: translateX(50%); align-items: center; bottom: 16px; }
 
-  /* tables become stacked cards on phones */
+  /* tables become compact cards on phones: title row, then a 2-column grid of label-over-value cells */
   .a-table.a-stack, .a-table.a-stack tbody { display: block; }
   .a-table.a-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .a-table.a-stack tr { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .a-table.a-stack tr { display: grid; grid-template-columns: 46px minmax(0, 1fr) 46px minmax(0, 1fr); gap: 12px 14px; padding: 16px; border-bottom: 1px solid var(--line); }
   .a-table.a-stack tr:last-child { border-bottom: 0; }
-  .a-table.a-stack td { display: flex; align-items: center; justify-content: space-between; gap: 12px; grid-column: 1 / -1; padding: 6px 0 !important; border: 0; min-width: 0; text-align: right; }
-  .a-table.a-stack td[data-label]::before { content: attr(data-label); flex: none; max-width: 45%; text-align: left; font-size: 12px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-  .a-table.a-stack td > * { min-width: 0; }
-  .a-table.a-stack td.a-cell-thumb { grid-column: 1; grid-row: 1; padding: 0 !important; align-self: start; }
-  .a-table.a-stack td.a-cell-main { grid-column: 1 / -1; display: block; text-align: left; padding: 0 0 8px !important; font-size: 15px; }
-  .a-table.a-stack td.a-cell-thumb ~ td.a-cell-main { grid-column: 2; grid-row: 1; align-self: center; }
-  .a-table.a-stack td.a-actions { justify-content: flex-end; gap: 4px; margin-top: 6px; padding-top: 10px !important; border-top: 1px dashed var(--line-2); }
+  .a-table.a-stack td { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 4px; grid-column: span 2; padding: 0 !important; border: 0; min-width: 0; text-align: left; font-size: 14px; }
+  .a-table.a-stack td[data-label]::before { content: attr(data-label); max-width: 100%; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; line-height: 1.3; }
+  .a-table.a-stack td > * { min-width: 0; max-width: 100%; }
+  .a-table.a-stack td.a-cell-thumb { grid-column: 1; grid-row: 1; align-self: center; }
+  .a-table.a-stack td.a-cell-main { grid-column: 1 / -1; display: block; font-size: 15px; }
+  .a-table.a-stack td.a-cell-thumb ~ td.a-cell-main { grid-column: 2 / -1; grid-row: 1; align-self: center; }
+  /* actions always take the right half: they share the last row with an odd cell, otherwise start a new one */
+  .a-table.a-stack td.a-actions { grid-column: -3 / -1; flex-direction: row; justify-content: flex-end; align-items: flex-end; align-self: end; gap: 2px; margin: -4px -6px -6px 0; }
   .a-table.a-stack td.a-actions > * { display: inline-flex; }
-  .a-table.a-stack td.a-empty { display: block; text-align: center; }
+  .a-table.a-stack td.a-empty { display: block; text-align: center; grid-column: 1 / -1; padding: 36px 16px !important; }
   .a-table.a-stack tr.a-empty-row { display: block; }
-  .a-table.a-stack .a-status-cell { align-items: flex-end; }
+  .a-table.a-stack .a-status-cell { align-items: flex-start; }
   .a-products .a-cell-main { min-width: 0; max-width: none; }
-  .a-table.a-stack .stock-form { justify-content: flex-end; }
-  .a-table.a-stack td:has(.stock-form) { flex-wrap: wrap; }
-  .a-table.a-stack td:has(.stock-form) .a-stock-note { width: 100%; text-align: right; margin-top: 0; }
+  .a-table.a-stack .stock-form { justify-content: flex-start; }
+  .admin .a-stack input.stock-input:not(#_) { width: 92px; }
+  .a-table.a-stack .a-stock-note { margin-top: 0; }
+  .admin .a-table.a-stack .a-inline-status select { max-width: 100%; }
   .a-table.a-stack .a-icon-btn { width: 42px; height: 42px; }
   .a-message { padding: 16px; }
   .a-message-head { flex-wrap: wrap; }
@@ -562,9 +565,8 @@ code, .a-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, mono
   .a-lang-block { padding: 14px; }
 }
 @media (max-width: 400px) {
-  .a-stats { grid-template-columns: minmax(0, 1fr); }
-  .a-stat { flex-direction: row; align-items: center; }
-  .admin .a-filters select { flex: 1 1 100%; }
+  .a-stat { padding: 14px; }
+  .a-stat-val { font-size: 21px; }
 }
 @media print {
   .a-sidebar, .a-topbar, .a-sky, .a-toolbar, .a-actions, .toast-wrap { display: none !important; }

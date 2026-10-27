@@ -229,6 +229,22 @@ final class Admin
         if (Request::str('slug') !== '' && !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', Request::str('slug'))) {
             $errors['slug'] = 'invalid';
         }
+        if (ctype_digit(trim($in['stock'])) && (int) trim($in['stock']) > Products::MAX_STOCK) {
+            $errors['stock'] = 'invalid';   // never clamp silently: 1000000 is almost always a typo
+        }
+        if ($errors) {
+            // Report every wrong field at once, not just the slug (same rules as Products::save).
+            $price = str_replace(',', '.', trim($in['price']));
+            if (trim($in['name']) === '') {
+                $errors['name'] = 'required';
+            }
+            if (!is_numeric($price) || (float) $price < 0) {
+                $errors['price'] = 'invalid';
+            }
+            if (trim($in['stock']) !== '' && !ctype_digit(trim($in['stock']))) {
+                $errors['stock'] = 'invalid';
+            }
+        }
         $r = $errors ? ['ok' => false, 'errors' => $errors] : Products::save($in, $id !== '' ? $id : null);
         if (!$r['ok']) {
             if (($r['errors']['id'] ?? '') === 'not_found') {

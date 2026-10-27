@@ -20,13 +20,13 @@ $qs = static function (array $patch) use ($f): string {
   <form method="get" class="a-filters" role="search">
     <div class="a-search"><?= icon('search') ?><input type="search" name="q" value="<?= e($f['q']) ?>" placeholder="<?= e(t('admin.orderSearch')) ?>" aria-label="<?= e(t('common.search')) ?>"></div>
     <?php if ($f['status'] !== ''): ?><input type="hidden" name="status" value="<?= e($f['status']) ?>"><?php endif ?>
-    <select name="sort" aria-label="<?= e(t('sort.label')) ?>">
+    <select name="sort" data-autosubmit aria-label="<?= e(t('sort.label')) ?>">
       <?php foreach (['new' => 'admin.sortNew', 'old' => 'admin.sortOld', 'total-desc' => 'admin.sortTotalDesc', 'total-asc' => 'admin.sortTotalAsc', 'status' => 'admin.sortStatus'] as $k => $l): ?><option value="<?= $k ?>" <?= $f['sort'] === $k ? 'selected' : '' ?>><?= e(t($l)) ?></option><?php endforeach ?></select>
-    <select name="account" aria-label="<?= e(t('admin.clients')) ?>">
+    <select name="account" data-autosubmit aria-label="<?= e(t('admin.clients')) ?>">
       <option value=""><?= e(t('admin.allClients')) ?></option>
       <option value="yes" <?= $f['account'] === 'yes' ? 'selected' : '' ?>><?= e(t('account.registeredClient')) ?></option>
       <option value="no" <?= $f['account'] === 'no' ? 'selected' : '' ?>><?= e(t('account.orderGuest')) ?></option></select>
-    <?php if ($clients): ?><select name="user" aria-label="<?= e(t('admin.client')) ?>"><option value=""><?= e(t('admin.client')) ?>: —</option>
+    <?php if ($clients): ?><select name="user" data-autosubmit aria-label="<?= e(t('admin.client')) ?>"><option value=""><?= e(t('admin.client')) ?>: —</option>
       <?php foreach ($clients as $c): ?><option value="<?= e($c['id']) ?>" <?= $f['user'] === $c['id'] ? 'selected' : '' ?>><?= e(($c['name'] ?: $c['email']) . ' · ' . $c['orders']) ?></option><?php endforeach ?></select><?php endif ?>
     <button class="btn btn-ghost btn-sm" type="submit"><?= icon('filter') ?> <?= e(t('admin.filter')) ?></button>
     <?php if ($f['q'] !== '' || $f['status'] !== '' || $f['account'] !== '' || $f['user'] !== ''): ?><a href="<?= e(purl('/admin/orders')) ?>" class="btn btn-ghost btn-sm a-reset"><?= icon('x') ?> <?= e(t('admin.resetFilters')) ?></a><?php endif ?>
