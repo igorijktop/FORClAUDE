@@ -17,6 +17,12 @@ $nav = [
     ['settings', '/admin/settings', 'settings', t('admin.settings'), 0],
 ];
 $here = purl(I18n::cleanPath());
+// Errors stay on the page (they need reading); confirmations are short toasts.
+$errors = array_values(array_filter($flash, static fn($f) => $f['type'] !== 'ok'));
+$toasts = array_values(array_filter($flash, static fn($f) => $f['type'] === 'ok'));
+$logout = static fn(string $class, bool $label): string => '<form method="post" action="' . e(purl('/admin/logout')) . '" class="a-logout">' . csrf_field()
+    . '<button type="submit" class="' . $class . '"' . ($label ? '' : ' aria-label="' . e(t('common.logout')) . '" title="' . e(t('common.logout')) . '"') . '>'
+    . icon('logout') . ($label ? ' <span>' . e(t('common.logout')) . '</span>' : '') . '</button></form>';
 ?>
 <!doctype html>
 <html lang="<?= e($lang) ?>" class="no-js">
@@ -36,40 +42,55 @@ $here = purl(I18n::cleanPath());
 var dark=s?s==='dark':window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches;d.setAttribute('data-theme',dark?'dark':'light');}catch(e){}})();
 </script>
 </head>
-<body class="admin">
+<body class="admin page-<?= e($active !== '' ? $active : 'other') ?>">
+<a class="skip-link" href="#main"><?= e(t('common.skip')) ?></a>
 <?= icon_sprite() ?>
+<div class="a-sky" aria-hidden="true"><span class="a-blob b1"></span><span class="a-blob b2"></span><span class="a-blob b3"></span></div>
 <div class="a-shell">
-  <aside class="a-sidebar" id="aSidebar" aria-label="Admin navigation">
-    <a href="<?= e(purl('/admin')) ?>" class="a-brand"><?= logo_tag('ONIKA', 38) ?><span>admin</span></a>
+  <aside class="a-sidebar" id="aSidebar" aria-label="<?= e(t('admin.adminNav')) ?>">
+    <div class="a-brand-row">
+      <a href="<?= e(purl('/admin')) ?>" class="a-brand"><?= logo_tag('ONIKA', 38) ?><span>admin</span></a>
+      <button type="button" class="icon-btn a-side-close" data-nav-close aria-label="<?= e(t('admin.closeMenu')) ?>"><?= icon('x') ?></button>
+    </div>
     <nav class="a-nav">
       <?php foreach ($nav as [$key, $href, $ic, $label, $badge]): ?>
         <a href="<?= e(purl($href)) ?>" class="<?= $active === $key ? 'on' : '' ?>"<?= $active === $key ? ' aria-current="page"' : '' ?>>
-          <?= icon($ic) ?><span><?= e($label) ?></span><?php if ($badge > 0): ?><em class="a-count"><?= (int) $badge ?></em><?php endif ?>
+          <span class="a-nav-ic"><?= icon($ic) ?></span><span class="a-nav-label"><?= e($label) ?></span><?php if ($badge > 0): ?><em class="a-count"><?= (int) $badge ?></em><?php endif ?>
         </a>
       <?php endforeach ?>
     </nav>
     <div class="a-side-foot">
       <div class="a-langs" role="group" aria-label="<?= e(t('common.language')) ?>">
         <?php foreach (I18n::SUPPORTED as $l): ?>
-          <a href="<?= e($here . '?' . query_string(array_merge($_GET, ['lang' => $l]))) ?>" class="<?= $l === $lang ? 'on' : '' ?>"><?= e(I18n::SHORT[$l]) ?></a>
+          <a href="<?= e($here . '?' . query_string(array_merge($_GET, ['lang' => $l]))) ?>" class="<?= $l === $lang ? 'on' : '' ?>" hreflang="<?= e($l) ?>"<?= $l === $lang ? ' aria-current="true"' : '' ?>><?= e(I18n::SHORT[$l]) ?></a>
         <?php endforeach ?>
       </div>
-      <a href="<?= e(purl('/')) ?>" target="_blank" rel="noopener" class="a-side-link"><?= icon('external') ?> <?= e(t('common.openSite')) ?></a>
-      <form method="post" action="<?= e(purl('/admin/logout')) ?>"><?= csrf_field() ?><button type="submit" class="a-side-link"><?= icon('logout') ?> <?= e(t('common.logout')) ?></button></form>
+      <a href="<?= e(purl('/')) ?>" target="_blank" rel="noopener" class="a-side-link"><?= icon('external') ?> <span><?= e(t('common.openSite')) ?></span></a>
+      <?= $logout('a-side-link', true) ?>
     </div>
   </aside>
 
   <div class="a-main">
     <header class="a-topbar">
-      <button class="icon-btn a-burger" id="aBurger" aria-label="Menu" aria-controls="aSidebar"><?= icon('menu') ?></button>
-      <h1><?= e($meta['title'] ?? '') ?></h1>
+      <button type="button" class="icon-btn a-burger" id="aBurger" aria-label="<?= e(t('admin.menu')) ?>" aria-controls="aSidebar" aria-expanded="false"><?= icon('menu') ?></button>
+      <div class="a-title">
+        <span class="a-eyebrow">ONIKA <i>admin</i></span>
+        <h1><?= e($meta['title'] ?? '') ?></h1>
+      </div>
       <div class="a-top-actions">
         <?php if (!empty($meta['actions'])) { echo $meta['actions']; } ?>
-        <button class="icon-btn theme-toggle" id="themeToggle" aria-label="<?= e(t('theme.toggle')) ?>"><?= icon('moon', 'ic-moon') ?><?= icon('sun', 'ic-sun') ?></button>
-        <?php if ($admin): ?><span class="a-user" title="<?= e($admin['username']) ?>"><span class="a-avatar"><?= e(initial($admin['username'])) ?></span><span class="a-user-name"><?= e($admin['username']) ?></span></span><?php endif ?>
+        <button type="button" class="icon-btn theme-toggle" id="themeToggle" aria-label="<?= e(t('theme.toggle')) ?>" title="<?= e(t('theme.toggle')) ?>"><?= icon('moon', 'ic-moon') ?><?= icon('sun', 'ic-sun') ?></button>
+        <?php if ($admin): ?><span class="a-user" title="<?= e($admin['username']) ?>"><span class="a-avatar" aria-hidden="true"><?= e(initial($admin['username'])) ?></span><span class="a-user-name"><?= e($admin['username']) ?></span></span>
+          <?= $logout('icon-btn a-top-logout', false) ?><?php endif ?>
       </div>
     </header>
-    <main class="a-content" id="main"><?= $body ?></main>
+    <main class="a-content" id="main" tabindex="-1">
+      <?php foreach ($errors as $f): ?>
+        <div class="a-flash err" role="alert"><span class="a-flash-ic"><?= icon('alert') ?></span><span class="grow"><?= e($f['message']) ?></span>
+          <button type="button" class="a-flash-x" data-dismiss aria-label="<?= e(t('common.close')) ?>"><?= icon('x') ?></button></div>
+      <?php endforeach ?>
+      <?= $body ?>
+    </main>
   </div>
 </div>
 <div class="a-overlay" id="aOverlay"></div>
@@ -78,9 +99,10 @@ var dark=s?s==='dark':window.matchMedia&&matchMedia('(prefers-color-scheme: dark
 window.ADMIN = <?= json_script([
     'csrf' => csrf_token(),
     'base' => \Onika\Request::base(),
-    'flash' => $flash,
+    'flash' => $toasts,
     'api' => purl('/admin'),
     'lang' => $lang,
+    'upload' => ['maxBytes' => (int) cfg('upload_max_bytes', 8 * 1024 * 1024), 'maxFiles' => (int) cfg('upload_max_files', 12), 'maxImages' => 20],
     't' => [
         'confirm' => t('admin.confirmTitle'), 'cancel' => t('admin.cancel'), 'ok' => t('admin.confirmOk'),
         'translateEmpty' => t('admin.translateEmpty'), 'translateError' => t('admin.translateError'),
@@ -88,6 +110,10 @@ window.ADMIN = <?= json_script([
         'uploadFailed' => t('admin.uploadFailed'), 'uploading' => t('admin.uploading'), 'main' => t('admin.mainImage'),
         'copied' => t('product.linkCopied'), 'newCategory' => t('admin.newCategory'), 'editCategory' => t('admin.editCategory'),
         'newBrand' => t('admin.newBrand'), 'editBrand' => t('admin.editBrand'), 'remove' => t('common.remove'),
+        'badType' => t('admin.uploadBadType'), 'tooBig' => t('admin.uploadTooBig'), 'tooMany' => t('admin.uploadTooMany'),
+        'imagesLimit' => t('admin.imagesLimit'), 'moveLeft' => t('admin.moveLeft'), 'moveRight' => t('admin.moveRight'),
+        'makeMain' => t('admin.makeMain'), 'imageN' => t('admin.imageN'), 'stockInvalid' => t('admin.stockInvalid'),
+        'menu' => t('admin.menu'), 'closeMenu' => t('admin.closeMenu'), 'cancelOrder' => t('admin.cancelOrderConfirm'),
     ],
 ]) ?>;
 </script>

@@ -58,6 +58,36 @@ final class Admin
         return Response::redirect(purl($fallback));
     }
 
+    /** Keep what was typed + the field errors for exactly one redirect, so the form can show them again. */
+    private static function keepForm(string $form, array $old, array $errors): void
+    {
+        Session::set('form_state', ['form' => $form, 'old' => $old, 'errors' => $errors]);
+    }
+
+    /** @return array{old:array,errors:array<string,string>} the kept state of $form (cleared after reading) */
+    private static function pullForm(string $form): array
+    {
+        $s = Session::get('form_state');
+        Session::forget('form_state');
+        if (!is_array($s) || ($s['form'] ?? null) !== $form) {
+            return ['old' => [], 'errors' => []];
+        }
+        return ['old' => (array) ($s['old'] ?? []), 'errors' => (array) ($s['errors'] ?? [])];
+    }
+
+    /** Remember the filtered list URL (search, filters, sort, page) so "back" links and redirects return to it. */
+    private static function rememberList(string $key, string $path, array $query): void
+    {
+        $qs = query_string($query);
+        Session::set('list_' . $key, purl($path) . ($qs !== '' ? '?' . $qs : ''));
+    }
+
+    public static function listUrl(string $key, string $path): string
+    {
+        $u = Session::get('list_' . $key);
+        return is_string($u) && $u !== '' ? $u : purl($path);
+    }
+
     /* ===================================================================== auth */
     public static function loginForm(array $p): Response
     {
@@ -133,16 +163,18 @@ final class Admin
             'include_inactive' => 1,
         ];
         $result = Products::search($f);
+        $query = ['q' => $f['q'], 'category' => (string) ($q['category'] ?? ''), 'brand' => (string) ($q['brand'] ?? ''), 'status' => $f['status'], 'sort' => $f['sort'] !== 'new' ? $f['sort'] : ''];
+        self::rememberList('products', '/admin/products', $query + ['page' => $result['page'] > 1 ? $result['page'] : '']);
         return View::admin('products', [
-            'f' => $f, 'result' => $result, 'categories' => Categories::all(), 'brands' => Brands::all(),
-            'query' => ['q' => $f['q'], 'category' => $q['category'] ?? '', 'brand' => $q['brand'] ?? '', 'status' => $f['status'], 'sort' => $f['sort'] !== 'new' ? $f['sort'] : ''],
+            'f' => $f, 'result' => $result, 'categories' => Categories::all(), 'brands' => Brands::all(), 'query' => $query,
         ], ['title' => t('admin.products'), 'active' => 'products']);
     }
 
     public static function productNew(array $p): Response
     {
         self::guard();
-        return View::admin('product_form', ['product' => null, 'categories' => Categories::all(), 'brands' => Brands::all(), 'errors' => (array) Session::get('form_errors', [])], ['title' => t('admin.newProduct'), 'active' => 'products']);
+        $st = self::pullForm('product:');
+        return View::admin('product_form', ['product' => null, 'categories' => Categories::all(), 'brands' => Brands::all(), 'old' => $st['old'], 'errors' => $st['errors'], 'back' => self::listUrl('products', '/admin/products')], ['title' => t('admin.newProduct'), 'active' => 'products']);
     }
 
     public static function productEdit(array $p): Response
@@ -153,7 +185,8 @@ final class Admin
             Session::flash('err', t('admin.notFoundItems'));
             return self::back('/admin/products');
         }
-        return View::admin('product_form', ['product' => $prod, 'categories' => Categories::all(), 'brands' => Brands::all(), 'errors' => (array) Session::get('form_errors', [])], ['title' => t('admin.editProduct'), 'active' => 'products']);
+        $st = self::pullForm('product:' . $prod['id']);
+        return View::admin('product_form', ['product' => $prod, 'categories' => Categories::all(), 'brands' => Brands::all(), 'old' => $st['old'], 'errors' => $st['errors'], 'back' => self::listUrl('products', '/admin/products')], ['title' => t('admin.editProduct'), 'active' => 'products']);
     }
 
     public static function productSave(array $p): Response
@@ -192,8 +225,41 @@ final class Admin
                 $in['images'][] = $saved;
             }
         }
-        $r = Products::save($in, $id !== '' ? $id : null);
+        $errors = [];
+        if (Request::str('slug') !== '' && !preg_match('/^[a-z0-9]+(?:-[a-z0-9]+)*$/', Request::str('slug'))) {
+            $errors['slug'] = 'invalid';
+        }
+        if (ctype_digit(trim($in['stock'])) && (int) trim($in['stock']) > Products::MAX_STOCK) {
+            $errors['stock'] = 'invalid';   // never clamp silently: 1000000 is almost always a typo
+        }
+        if ($errors) {
+            // Report every wrong field at once, not just the slug (same rules as Products::save).
+            $price = str_replace(',', '.', trim($in['price']));
+            if (trim($in['name']) === '') {
+                $errors['name'] = 'required';
+            }
+            if (!is_numeric($price) || (float) $price < 0) {
+                $errors['price'] = 'invalid';
+            }
+            if (trim($in['stock']) !== '' && !ctype_digit(trim($in['stock']))) {
+                $errors['stock'] = 'invalid';
+            }
+        }
+        $r = $errors ? ['ok' => false, 'errors' => $errors] : Products::save($in, $id !== '' ? $id : null);
         if (!$r['ok']) {
+            if (($r['errors']['id'] ?? '') === 'not_found') {
+                Session::flash('err', t('admin.notFoundItems'));
+                return self::back('/admin/products');
+            }
+            // Keep everything that was typed (and the images already uploaded) so nothing has to be entered twice.
+            self::keepForm('product:' . $id, [
+                'name' => $in['name'], 'price' => $in['price'], 'oldPrice' => $in['oldPrice'], 'category' => $in['category'],
+                'brand' => Request::str('brand'), 'brandNew' => Request::str('brandNew'), 'description' => $in['description'],
+                'sku' => $in['sku'], 'sizes' => $in['sizes'], 'slug' => $in['slug'], 'stock' => $in['stock'],
+                'featured' => $in['featured'], 'active' => $in['active'], 'images' => array_values(array_unique($in['images'])),
+                'nameRu' => $in['translations']['ru']['name'], 'descRu' => $in['translations']['ru']['description'],
+                'nameEn' => $in['translations']['en']['name'], 'descEn' => $in['translations']['en']['description'],
+            ], array_map('strval', (array) ($r['errors'] ?? [])));
             Session::flash('err', t('admin.formInvalid'));
             return self::back($id !== '' ? '/admin/products/' . rawurlencode($id) . '/edit' : '/admin/products/new');
         }
@@ -216,14 +282,17 @@ final class Admin
         self::guardPost();
         $prod = Products::find($p['id']);
         if ($prod) {
-            // Inline edit in the product list sends the exact number; without it the button just flips 0 ↔ 1.
-            $qty = Request::str('qty');
-            if ($qty !== '' && ctype_digit($qty)) {
-                Products::setStock($prod['id'], (int) min((int) $qty, Products::MAX_STOCK));
-            } elseif ($qty === '') {
+            // Inline edit in the product list sends the exact number; a request without "qty" just flips 0 ↔ 1.
+            $raw = Request::input('qty');
+            $qty = is_scalar($raw) ? trim((string) $raw) : '';
+            if ($raw === null) {
                 Products::setStock($prod['id'], $prod['inStock'] ? 0 : 1);
+            } elseif ($qty !== '' && ctype_digit($qty) && (int) $qty <= Products::MAX_STOCK) {
+                Products::setStock($prod['id'], (int) $qty);
+                Session::flash('ok', t('admin.stockSaved', ['name' => I18n::productName($prod), 'n' => (int) $qty]));
             } else {
-                Session::flash('err', t('admin.formInvalid'));
+                // Empty, negative, fractional or too big: never guess — keep the old number and say why.
+                Session::flash('err', t('admin.stockInvalid', ['max' => Products::MAX_STOCK]));
             }
         }
         return self::backOr('/admin/products');
@@ -234,7 +303,9 @@ final class Admin
         self::guardPost();
         Products::delete($p['id']);
         Session::flash('ok', t('admin.deleted'));
-        return self::back('/admin/products');
+        // From the list: back to the same filtered page; from the edit form: to the remembered list.
+        $ref = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+        return str_contains($ref, '/edit') ? Response::redirect(self::listUrl('products', '/admin/products')) : self::backOr('/admin/products');
     }
 
     /** Normalise a multi-file $_FILES entry into a list of single-file arrays. */
@@ -263,16 +334,39 @@ final class Admin
     {
         self::guardPost();
         $out = [];
+        $rejected = [];
+        $maxBytes = (int) cfg('upload_max_bytes', 8 * 1024 * 1024);
+        $mb = (int) round($maxBytes / 1048576);
+        $sent = isset($_FILES['files']['name']) ? count((array) $_FILES['files']['name']) : 0;
         foreach (self::uploadedFiles('files') as $f) {
-            $path = Media::saveUpload($f);
+            $name = Text::truncate(basename((string) $f['name']), 80);
+            $err = (int) $f['error'];
+            if (in_array($err, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || ($err === UPLOAD_ERR_OK && (int) $f['size'] > $maxBytes)) {
+                $rejected[] = t('admin.uploadTooBig', ['name' => $name, 'mb' => $mb]);
+                continue;
+            }
+            if ($err === UPLOAD_ERR_OK && is_file((string) $f['tmp_name'])) {
+                $mime = (string) (new \finfo(FILEINFO_MIME_TYPE))->file((string) $f['tmp_name']);
+                if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+                    $rejected[] = t('admin.uploadBadType', ['name' => $name]);
+                    continue;
+                }
+            }
+            $path = $err === UPLOAD_ERR_OK ? Media::saveUpload($f) : null;
             if ($path !== null) {
                 $out[] = ['path' => $path, 'url' => Media::url($path, 300)];
+            } else {
+                $rejected[] = t('admin.uploadBroken', ['name' => $name]);
             }
         }
-        if (!$out) {
-            return Response::json(['ok' => false, 'error' => t('admin.uploadFailed')], 422);
+        $max = (int) cfg('upload_max_files', 12);
+        if ($sent > $max) {
+            $rejected[] = t('admin.uploadTooMany', ['n' => $max]);
         }
-        return Response::json(['ok' => true, 'files' => $out]);
+        if (!$out) {
+            return Response::json(['ok' => false, 'error' => $rejected ? implode(' ', $rejected) : t('admin.uploadFailed'), 'rejected' => $rejected], 422);
+        }
+        return Response::json(['ok' => true, 'files' => $out, 'rejected' => $rejected]);
     }
 
     /** POST /admin/api/translate — machine-translate UK → RU/EN (best effort, Google Translate web endpoint). */
@@ -365,18 +459,26 @@ final class Admin
     public static function categories(array $p): Response
     {
         self::guard();
-        return View::admin('categories', ['items' => Categories::all()], ['title' => t('admin.categories'), 'active' => 'categories']);
+        $st = self::pullForm('category');
+        return View::admin('categories', ['items' => Categories::all(), 'old' => $st['old'], 'errors' => $st['errors']], ['title' => t('admin.categories'), 'active' => 'categories']);
     }
 
     public static function categorySave(array $p): Response
     {
         self::guardPost();
-        $r = Categories::save([
+        $in = [
             'id' => Request::str('id'), 'name' => Request::str('name'), 'description' => (string) Request::input('description', ''),
-            'color' => Request::str('color'), 'name_ru' => Request::str('nameRu'), 'name_en' => Request::str('nameEn'),
-            'desc_ru' => (string) Request::input('descRu', ''), 'desc_en' => (string) Request::input('descEn', ''),
+            'color' => Request::str('color'), 'nameRu' => Request::str('nameRu'), 'nameEn' => Request::str('nameEn'),
+            'descRu' => (string) Request::input('descRu', ''), 'descEn' => (string) Request::input('descEn', ''),
+        ];
+        $r = Categories::save([
+            'id' => $in['id'], 'name' => $in['name'], 'description' => $in['description'], 'color' => $in['color'],
+            'name_ru' => $in['nameRu'], 'name_en' => $in['nameEn'], 'desc_ru' => $in['descRu'], 'desc_en' => $in['descEn'],
         ]);
-        Session::flash($r['ok'] ? 'ok' : 'err', $r['ok'] ? t('admin.saved') : t($r['error'] === 'exists' ? 'admin.nameExists' : 'admin.formInvalid'));
+        if (!$r['ok']) {
+            self::keepForm('category', $in, ['name' => ($r['error'] ?? '') === 'exists' ? 'exists' : 'required']);
+        }
+        Session::flash($r['ok'] ? 'ok' : 'err', $r['ok'] ? t('admin.saved') : t(($r['error'] ?? '') === 'exists' ? 'admin.nameExists' : 'admin.formInvalid'));
         return self::back('/admin/categories');
     }
 
@@ -399,18 +501,26 @@ final class Admin
     public static function brands(array $p): Response
     {
         self::guard();
-        return View::admin('brands', ['items' => Brands::all()], ['title' => t('admin.brands'), 'active' => 'brands']);
+        $st = self::pullForm('brand');
+        return View::admin('brands', ['items' => Brands::all(), 'old' => $st['old'], 'errors' => $st['errors']], ['title' => t('admin.brands'), 'active' => 'brands']);
     }
 
     public static function brandSave(array $p): Response
     {
         self::guardPost();
-        $r = Brands::save([
+        $in = [
             'id' => Request::str('id'), 'name' => Request::str('name'), 'description' => (string) Request::input('description', ''),
-            'name_ru' => Request::str('nameRu'), 'name_en' => Request::str('nameEn'),
-            'desc_ru' => (string) Request::input('descRu', ''), 'desc_en' => (string) Request::input('descEn', ''),
+            'nameRu' => Request::str('nameRu'), 'nameEn' => Request::str('nameEn'),
+            'descRu' => (string) Request::input('descRu', ''), 'descEn' => (string) Request::input('descEn', ''),
+        ];
+        $r = Brands::save([
+            'id' => $in['id'], 'name' => $in['name'], 'description' => $in['description'],
+            'name_ru' => $in['nameRu'], 'name_en' => $in['nameEn'], 'desc_ru' => $in['descRu'], 'desc_en' => $in['descEn'],
         ]);
-        Session::flash($r['ok'] ? 'ok' : 'err', $r['ok'] ? t('admin.saved') : t($r['error'] === 'exists' ? 'admin.nameExists' : 'admin.formInvalid'));
+        if (!$r['ok']) {
+            self::keepForm('brand', $in, ['name' => ($r['error'] ?? '') === 'exists' ? 'exists' : 'required']);
+        }
+        Session::flash($r['ok'] ? 'ok' : 'err', $r['ok'] ? t('admin.saved') : t(($r['error'] ?? '') === 'exists' ? 'admin.nameExists' : 'admin.formInvalid'));
         return self::back('/admin/brands');
     }
 
@@ -439,6 +549,7 @@ final class Admin
             'account' => (string) ($q['account'] ?? ''), 'user' => (string) ($q['user'] ?? ''), 'page' => (int) ($q['page'] ?? 1), 'per_page' => 20,
         ];
         $result = Orders::search($f);
+        self::rememberList('orders', '/admin/orders', ['status' => $f['status'], 'q' => $f['q'], 'sort' => $f['sort'] !== 'new' ? $f['sort'] : '', 'account' => $f['account'], 'user' => $f['user'], 'page' => $result['page'] > 1 ? $result['page'] : '']);
         $users = [];
         foreach ($result['items'] as $o) {
             if ($o['userId'] && !isset($users[$o['userId']])) {
@@ -457,7 +568,7 @@ final class Admin
         if (!$o) {
             return Response::notFound();
         }
-        return View::admin('order', ['o' => $o, 'client' => $o['userId'] ? Users::find($o['userId']) : null], ['title' => t('account.orderNo', ['id' => $o['id']]), 'active' => 'orders']);
+        return View::admin('order', ['o' => $o, 'client' => $o['userId'] ? Users::find($o['userId']) : null, 'back' => self::listUrl('orders', '/admin/orders')], ['title' => t('account.orderNo', ['id' => $o['id']]), 'active' => 'orders']);
     }
 
     public static function orderStatus(array $p): Response
@@ -473,7 +584,7 @@ final class Admin
         self::guardPost();
         Orders::delete($p['id']);
         Session::flash('ok', t('admin.deleted'));
-        return self::back('/admin/orders');
+        return Response::redirect(self::listUrl('orders', '/admin/orders'));
     }
 
     /* =================================================================== clients */
@@ -514,7 +625,22 @@ final class Admin
     public static function subscribersCsv(array $p): Response
     {
         self::guard();
-        return Response::text(Subscribers::csv(), 'text/csv; charset=utf-8')->header('Content-Disposition', 'attachment; filename="onika-subscribers.csv"')->noCache();
+        // Excel-friendly: UTF-8 BOM, CRLF, every field quoted, ";" (the list separator of uk/ru Excel; "," for English),
+        // and cells that start like a formula (= + - @ tab CR) are prefixed with ' so they are never executed.
+        $sep = I18n::lang() === 'en' ? ',' : ';';
+        $cell = static function (string $v): string {
+            if ($v !== '' && preg_match('/^[=+\-@\t\r]/', $v)) {
+                $v = "'" . $v;
+            }
+            return '"' . str_replace('"', '""', $v) . '"';
+        };
+        $lines = [implode($sep, [$cell('email'), $cell('subscribed_at')])];
+        foreach (Subscribers::all() as $s) {
+            $ts = strtotime((string) ($s['at'] ?? ''));
+            $lines[] = implode($sep, [$cell((string) $s['email']), $cell($ts ? date('Y-m-d H:i:s', $ts) : '')]);
+        }
+        $csv = "\u{FEFF}" . implode("\r\n", $lines) . "\r\n";
+        return Response::text($csv, 'text/csv; charset=utf-8')->header('Content-Disposition', 'attachment; filename="onika-subscribers-' . date('Y-m-d') . '.csv"')->noCache();
     }
 
     public static function subscriberDelete(array $p): Response
@@ -551,7 +677,8 @@ final class Admin
     public static function settings(array $p): Response
     {
         self::guard();
-        return View::admin('settings', ['s' => Settings::all(), 'backups' => Backups::list()], ['title' => t('admin.settings'), 'active' => 'settings']);
+        $st = self::pullForm('settings');
+        return View::admin('settings', ['s' => Settings::all(), 'backups' => Backups::list(), 'old' => $st['old'], 'errors' => $st['errors']], ['title' => t('admin.settings'), 'active' => 'settings']);
     }
 
     public static function settingsSave(array $p): Response
@@ -565,6 +692,27 @@ final class Admin
                     $tr[$l][$k] = $v;
                 }
             }
+        }
+        $errors = [];
+        $email = Request::str('email');
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $errors['email'] = 'email';
+        }
+        foreach (['instagram', 'telegram'] as $k) {
+            $v = Request::str($k);
+            if ($v !== '' && (!preg_match('#^https?://[^\s/$.?\#][^\s]*$#i', $v) || !filter_var($v, FILTER_VALIDATE_URL))) {
+                $errors[$k] = 'url';
+            }
+        }
+        $free = trim((string) Request::input('freeShippingFrom', '0'));
+        if ($free !== '' && (!is_numeric($free) || (float) $free < 0 || (float) $free > 10000000)) {
+            $errors['freeShippingFrom'] = 'number';
+        }
+        if ($errors) {
+            // Nothing is saved: show the same form with what was typed and the wrong fields marked.
+            self::keepForm('settings', Request::inputAll(), $errors);
+            Session::flash('err', t('admin.formInvalid'));
+            return self::back('/admin/settings');
         }
         $url = static function (string $v): string {
             $v = trim($v);
@@ -581,7 +729,7 @@ final class Admin
             'address' => Text::truncate(Request::str('address'), 200),
             'instagram' => $url(Request::str('instagram')),
             'telegram' => $url(Request::str('telegram')),
-            'freeShippingFrom' => max(0, (int) Request::input('freeShippingFrom', 0)),
+            'freeShippingFrom' => max(0, (int) round((float) $free)),
             'translations' => $tr,
         ]);
         Session::flash('ok', t('admin.saved'));
@@ -605,7 +753,8 @@ final class Admin
         self::guard();
         $path = Backups::path($p['name']);
         if (!$path) {
-            return Response::notFound();
+            Session::flash('err', t('admin.backupMissing'));
+            return self::back('/admin/settings');
         }
         return Response::file($path, 'application/octet-stream', basename($path))->noCache();
     }
@@ -613,10 +762,11 @@ final class Admin
     public static function backupRestore(array $p): Response
     {
         self::guardPost();
-        $ok = Backups::restore($p['name']);
+        $ok = Backups::path($p['name']) !== null && Backups::restore($p['name']);
         if ($ok) {
             // The restored database may hold a different admin account: start a clean session.
             Auth::logoutAdmin();
+            Session::flash('ok', t('admin.backupRestored'));
             return Response::redirect(purl('/admin/login'));
         }
         Session::flash('err', t('admin.backupFailed'));
@@ -626,8 +776,8 @@ final class Admin
     public static function backupDelete(array $p): Response
     {
         self::guardPost();
-        Backups::delete($p['name']);
-        Session::flash('ok', t('admin.deleted'));
+        $ok = Backups::path($p['name']) !== null && Backups::delete($p['name']);
+        Session::flash($ok ? 'ok' : 'err', $ok ? t('admin.deleted') : t('admin.backupMissing'));
         return self::back('/admin/settings');
     }
 }
