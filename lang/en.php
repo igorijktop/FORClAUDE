@@ -563,4 +563,8 @@ Free shipping for orders from {amount}.',
     'admin.stockHint' => '0 means out of stock. An order lowers the quantity automatically; cancelling the order puts it back.',
     'admin.saveQty' => 'Save quantity',
     'common.toTop' => 'Back to top',
+
+    // --- frontjs ---
+    'js.noMoreStock' => 'No more of this item in stock.',
+    'js.serverError' => 'Something went wrong on our side. Please try again in a minute.',
 ];
