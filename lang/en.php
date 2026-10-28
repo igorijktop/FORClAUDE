@@ -600,4 +600,7 @@ Free shipping for orders from {amount}.',
     'admin.cancelOrderConfirm' => 'Cancel this order? The items will go back to stock.',
     'admin.showPass' => 'Show password',
     'admin.hidePass' => 'Hide password',
+    // --- frontjs ---
+    'js.noMoreStock' => 'No more of this item in stock.',
+    'js.serverError' => 'Something went wrong on our side. Please try again in a minute.',
 ];
