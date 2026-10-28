@@ -49,6 +49,7 @@ final class Seo
         };
         $add('/', '1.0', 'weekly');
         $add('/catalog', '0.9', 'daily');
+        $add('/catalog?featured=1', '0.6', 'daily');     // "New" — its own canonical page (Shop::renderCatalog)
         $add('/about', '0.5', 'monthly');
         $add('/contacts', '0.5', 'monthly');
         foreach (Categories::visible() as $c) {

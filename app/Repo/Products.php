@@ -108,8 +108,9 @@ final class Products
         $order = match (is_scalar($f['sort'] ?? null) ? (string) $f['sort'] : 'new') {
             'price-asc' => 'price ASC, id DESC',
             'price-desc' => 'price DESC, id DESC',
-            'popular' => 'views DESC, created_at DESC',
-            'name' => 'name COLLATE NOCASE ASC',
+            // Every order ends with a unique column: equal names/views must not swap places between pages.
+            'popular' => 'views DESC, created_at DESC, id DESC',
+            'name' => 'name COLLATE NOCASE ASC, id ASC',
             default => 'created_at DESC, id DESC',
         };
 
@@ -179,7 +180,7 @@ final class Products
 
     /**
      * First photo of the most popular visible product of each category (home page tiles), in one query.
-     * Same order as search(['sort' => 'popular']): views DESC, created_at DESC.
+     * Same order as search(['sort' => 'popular']): views DESC, created_at DESC, id DESC.
      * @param list<string> $categories
      * @return array<string,?string> category name => image path (null when that product has no photo)
      */
@@ -192,7 +193,7 @@ final class Products
         try {
             $rows = Db::all(
                 'SELECT category, images FROM (
-                    SELECT category, images, ROW_NUMBER() OVER (PARTITION BY category ORDER BY views DESC, created_at DESC) AS rn
+                    SELECT category, images, ROW_NUMBER() OVER (PARTITION BY category ORDER BY views DESC, created_at DESC, id DESC) AS rn
                     FROM products WHERE active = 1 AND category IN (' . Db::in($categories) . ')
                  ) WHERE rn = 1',
                 $categories
@@ -200,7 +201,7 @@ final class Products
         } catch (\PDOException) {       // SQLite older than 3.25 (no window functions)
             $rows = [];
             foreach ($categories as $c) {
-                $r = Db::one('SELECT category, images FROM products WHERE active = 1 AND category = ? ORDER BY views DESC, created_at DESC LIMIT 1', [$c]);
+                $r = Db::one('SELECT category, images FROM products WHERE active = 1 AND category = ? ORDER BY views DESC, created_at DESC, id DESC LIMIT 1', [$c]);
                 if ($r) {
                     $rows[] = $r;
                 }

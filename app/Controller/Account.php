@@ -25,6 +25,12 @@ final class Account
         return $u;
     }
 
+    /** Orders this browser placed as a guest (remembered by Api::createOrder), linked to the account on login. */
+    private static function guestOrders(): array
+    {
+        return array_values(array_filter((array) Session::get('guest_orders', []), 'is_string'));
+    }
+
     private static function meta(string $title): array
     {
         return ['title' => $title, 'active' => 'account', 'page' => 'account', 'noindex' => true, 'bodyClass' => 'is-account'];
@@ -53,7 +59,7 @@ final class Account
             Session::flash('err', t('account.errLocked'));
             return Response::redirect(url('/account/login'));
         }
-        $user = Users::check($email, Request::text('password'));
+        $user = Users::check($email, Request::text('password'), self::guestOrders());
         if (!$user) {
             RateLimit::fail('user-login', 15 * 60);
             Session::flash('err', t('account.errWrong'));
@@ -103,7 +109,7 @@ final class Account
             Session::flash('err', t('account.errPassword2'));
             return Response::redirect(url('/account/register'));
         }
-        $r = Users::create($email, $pass, $name, $phone);
+        $r = Users::create($email, $pass, $name, $phone, self::guestOrders());
         if (!$r['ok']) {
             $map = ['email' => 'account.errEmail', 'password' => 'account.errPassword', 'exists' => 'account.errExists'];
             Session::flash('err', t($map[$r['error']] ?? 'account.errFields'));

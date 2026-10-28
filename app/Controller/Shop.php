@@ -175,7 +175,8 @@ final class Shop
         ]);
         $isCategoryPage = $cat !== null;
         $basePath = $isCategoryPage ? '/catalog/' . $cat['slug'] : '/catalog';
-        $singleCat = count($f['category']) === 1 ? Categories::find($f['category'][0]) : null;
+        $singleCat = count($f['category']) !== 1 ? null
+            : ($cat !== null && $cat['name'] === $f['category'][0] ? $cat : Categories::find($f['category'][0]));
 
         // Query used for links (sort/page/filters). On a category page the category itself is implicit.
         $linkQuery = [
@@ -208,8 +209,10 @@ final class Shop
                 $cards .= view('shop/_card', ['p' => $prod]);
             }
             if ($mode === 'cards') {
+                // "Load more" past the end (products sold out meanwhile): nothing new, not a second copy of the last page.
+                $past = $f['page'] > $result['page'];
                 return Response::json([
-                    'ok' => true, 'html' => $cards, 'page' => $result['page'], 'pages' => $result['pages'], 'total' => $result['total'],
+                    'ok' => true, 'html' => $past ? '' : $cards, 'page' => $past ? $f['page'] : $result['page'], 'pages' => $result['pages'], 'total' => $result['total'],
                 ])->noCache();
             }
             return Response::json([

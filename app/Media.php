@@ -236,7 +236,11 @@ final class Media
         if ($info[2] === IMAGETYPE_JPEG && function_exists('exif_read_data')) {
             $exif = @exif_read_data($path);
             $o = (int) ($exif['Orientation'] ?? 1);
-            $rot = [3 => 180, 6 => -90, 8 => 90][$o] ?? 0;
+            // 2, 4, 5, 7 are the mirrored variants (selfies): flip first, then rotate like 1, 3, 8, 6.
+            if (in_array($o, [2, 4, 5, 7], true)) {
+                imageflip($im, $o === 4 ? IMG_FLIP_VERTICAL : IMG_FLIP_HORIZONTAL);
+            }
+            $rot = [3 => 180, 5 => 90, 6 => -90, 7 => -90, 8 => 90][$o] ?? 0;
             if ($rot !== 0) {
                 $r = imagerotate($im, $rot, 0);
                 if ($r) {

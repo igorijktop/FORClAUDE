@@ -39,8 +39,11 @@ final class Users
         return $r ? self::hydrate($r) : null;
     }
 
-    /** @return array{ok:bool,user?:array,error?:string} */
-    public static function create(string $email, string $password, string $name = '', string $phone = ''): array
+    /**
+     * @param list<string> $guestOrders ids of the orders this browser placed as a guest (see linkGuestOrders())
+     * @return array{ok:bool,user?:array,error?:string}
+     */
+    public static function create(string $email, string $password, string $name = '', string $phone = '', array $guestOrders = []): array
     {
         $email = self::normalizeEmail($email);
         if (!Text::isEmail($email)) {
@@ -57,12 +60,15 @@ final class Users
             'INSERT INTO users (id,email,password,name,phone,address,created_at) VALUES (?,?,?,?,?,?,?)',
             [$id, $email, password_hash($password, PASSWORD_DEFAULT), Text::truncate($name, 100), Text::truncate($phone, 40), '', Text::now()]
         );
-        self::linkGuestOrders($id, $email);
+        self::linkGuestOrders($id, $email, $guestOrders, $phone);
         return ['ok' => true, 'user' => self::find($id)];
     }
 
-    /** Verify credentials; returns the user or null. */
-    public static function check(string $email, string $password): ?array
+    /**
+     * Verify credentials; returns the user or null.
+     * @param list<string> $guestOrders ids of the orders this browser placed as a guest (see linkGuestOrders())
+     */
+    public static function check(string $email, string $password, array $guestOrders = []): ?array
     {
         $r = Db::one('SELECT * FROM users WHERE email = ?', [self::normalizeEmail($email)]);
         $hash = $r['password'] ?? password_hash('onika-dummy', PASSWORD_DEFAULT);
@@ -72,7 +78,7 @@ final class Users
         if (password_needs_rehash($r['password'], PASSWORD_DEFAULT)) {
             Db::exec('UPDATE users SET password = ? WHERE id = ?', [password_hash($password, PASSWORD_DEFAULT), $r['id']]);
         }
-        self::linkGuestOrders((string) $r['id'], (string) $r['email']);
+        self::linkGuestOrders((string) $r['id'], (string) $r['email'], $guestOrders, (string) ($r['phone'] ?? ''));
         return self::hydrate($r);
     }
 
@@ -110,23 +116,35 @@ final class Users
         return $pw;
     }
 
-    /** Attach earlier guest orders placed with the same e-mail to this account. */
-    public static function linkGuestOrders(string $userId, string $email): void
+    /**
+     * Attach earlier guest orders placed with the same e-mail to this account. E-mail addresses are not
+     * verified, so the e-mail alone is not enough (anyone could register "someone@…" and read that person's
+     * orders: name, phone, address): the order must also have been placed from this browser ($guestOrders,
+     * kept in the session), or carry the account's phone number as well.
+     * @param list<string> $guestOrders
+     */
+    public static function linkGuestOrders(string $userId, string $email, array $guestOrders = [], string $phone = ''): void
     {
         $email = self::normalizeEmail($email);
-        if ($email === '') {
+        $ids = array_values(array_unique(array_filter($guestOrders, static fn($v) => is_string($v) && $v !== '' && strlen($v) <= 32)));
+        $ids = array_slice($ids, -50);
+        $phone = trim($phone);
+        if ($email === '' || (!$ids && $phone === '')) {
             return;
         }
+        $own = $ids ? 'id IN (' . Db::in($ids) . ')' : '0';
         try {
             Db::exec(
-                "UPDATE orders SET user_id = ? WHERE user_id IS NULL AND lower(json_extract(customer, '$.email')) = ?",
-                [$userId, $email]
+                "UPDATE orders SET user_id = ? WHERE user_id IS NULL AND lower(json_extract(customer, '$.email')) = ?"
+                . " AND ($own OR (? <> '' AND json_extract(customer, '$.phone') = ?))",
+                array_merge([$userId, $email], $ids, [$phone, $phone])
             );
         } catch (\PDOException) {
             // SQLite build without JSON functions: match in PHP instead.
             foreach (Db::all('SELECT id, customer FROM orders WHERE user_id IS NULL') as $r) {
                 $c = Text::jsonDecode($r['customer'], []);
-                if (self::normalizeEmail((string) ($c['email'] ?? '')) === $email) {
+                if (self::normalizeEmail((string) ($c['email'] ?? '')) === $email
+                    && (in_array((string) $r['id'], $ids, true) || ($phone !== '' && (string) ($c['phone'] ?? '') === $phone))) {
                     Db::exec('UPDATE orders SET user_id = ? WHERE id = ?', [$userId, $r['id']]);
                 }
             }

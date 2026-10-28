@@ -38,7 +38,8 @@ final class Orders
     {
         $errors = [];
         $name = Text::line($p['name'] ?? '', 100);
-        if (mb_strlen($name) < 2) {
+        // At least two characters, one of them a letter ("--", "123" or a lone emoji is not a name).
+        if (mb_strlen($name) < 2 || !preg_match('/\p{L}/u', $name)) {
             $errors['name'] = 'required';
         }
         $phone = Text::phone(Text::line($p['phone'] ?? '', 40));
@@ -60,7 +61,7 @@ final class Orders
         $city = Text::line($p['city'] ?? '', 100);
         $warehouse = Text::line($p['warehouse'] ?? '', 160);
         if ($ship !== 'pickup') {
-            if (mb_strlen($city) < 2) {
+            if (mb_strlen($city) < 2 || !preg_match('/\p{L}/u', $city)) {
                 $errors['city'] = 'required';
             }
             if ($warehouse === '' && $ship !== 'kyiv_courier') {

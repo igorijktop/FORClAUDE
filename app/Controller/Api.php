@@ -98,6 +98,10 @@ final class Api
             return Response::json(['ok' => false, 'error' => $msg, 'errors' => $errors, 'unavailable' => $r['unavailable'] ?? [], 'limits' => (object) ($r['limits'] ?? [])], 422);
         }
         $o = $r['order'];
+        if (!$user) {
+            // Lets the guest attach this order to an account created/logged into later (Users::linkGuestOrders()).
+            Session::set('guest_orders', array_slice(array_merge(array_filter((array) Session::get('guest_orders', []), 'is_string'), [$o['id']]), -50));
+        }
         return Response::json([
             'ok' => true,
             'order' => ['id' => $o['id'], 'total' => $o['total']],
