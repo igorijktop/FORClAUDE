@@ -11,7 +11,7 @@ $c = $order['customer'];
   <div class="center">
     <div class="order-ok"><?= icon('check') ?></div>
     <span class="eyebrow"><?= e(t('order.eyebrow')) ?></span>
-    <h1 style="font-size:clamp(28px,4vw,44px);margin:14px 0"><?= e(t('order.accepted', ['id' => $order['id']])) ?></h1>
+    <h1 class="order-title" style="margin:14px 0"><?= e(t('order.accepted', ['id' => $order['id']])) ?></h1>
     <p class="muted" style="max-width:520px;margin:0 auto"><?= e(t('order.manager')) ?></p>
   </div>
 

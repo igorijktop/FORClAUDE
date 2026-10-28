@@ -14,7 +14,7 @@ $titleLast = count($titleWords) > 1 ? array_pop($titleWords) : '';
     <div class="hero-card">
       <div class="hero-inner">
         <div class="hero-copy reveal">
-          <span class="eyebrow"><?= icon('sparkle', 'sm') ?> <?= e(\Onika\Repo\Settings::tr('tagline', I18n::lang()) ?: t('home.eyebrow')) ?></span>
+          <span class="eyebrow"><?= e(\Onika\Repo\Settings::tr('tagline', I18n::lang()) ?: t('home.eyebrow')) ?></span>
           <h1><?= e(implode(' ', $titleWords)) ?><?php if ($titleLast !== ''): ?> <em><?= e($titleLast) ?></em><?php endif ?></h1>
           <p class="lead"><?= e($heroLead) ?></p>
           <div class="hero-cta">
