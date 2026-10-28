@@ -11,7 +11,7 @@ final class Stats
     /** Products visible in the shop. */
     public static function visibleProducts(): int
     {
-        return (int) Db::val('SELECT COUNT(*) FROM products WHERE active = 1 AND category NOT IN (SELECT name FROM categories WHERE active = 0)');
+        return (int) Db::val("SELECT COUNT(*) FROM products WHERE active = 1 AND COALESCE(category, '') NOT IN (SELECT name FROM categories WHERE active = 0)");
     }
 
     public static function dashboard(): array

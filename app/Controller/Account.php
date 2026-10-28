@@ -11,6 +11,7 @@ use Onika\Repo\Users;
 use Onika\Request;
 use Onika\Response;
 use Onika\Session;
+use Onika\Text;
 use Onika\View;
 
 final class Account
@@ -22,6 +23,12 @@ final class Account
             Halt::redirect(url('/account/login'));
         }
         return $u;
+    }
+
+    /** Orders this browser placed as a guest (remembered by Api::createOrder), linked to the account on login. */
+    private static function guestOrders(): array
+    {
+        return array_values(array_filter((array) Session::get('guest_orders', []), 'is_string'));
     }
 
     private static function meta(string $title): array
@@ -46,13 +53,13 @@ final class Account
     public static function login(array $p): Response
     {
         Session::requireCsrf();
-        $email = Request::str('email');
+        $email = mb_substr(Request::str('email'), 0, 190);
         Session::set('login_email', $email);
         if (RateLimit::blocked('user-login', 10)) {
             Session::flash('err', t('account.errLocked'));
             return Response::redirect(url('/account/login'));
         }
-        $user = Users::check($email, (string) Request::input('password', ''));
+        $user = Users::check($email, Request::text('password'), self::guestOrders());
         if (!$user) {
             RateLimit::fail('user-login', 15 * 60);
             Session::flash('err', t('account.errWrong'));
@@ -81,20 +88,28 @@ final class Account
             Session::flash('err', t('account.errLocked'));
             return Response::redirect(url('/account/register'));
         }
-        $email = Request::str('email');
-        $name = Request::str('name');
-        $phone = Request::str('phone');
+        $email = mb_substr(Request::str('email'), 0, 190);
+        $name = Text::line(Request::str('name'), 100);
+        $phone = Text::line(Request::str('phone'), 40);
         Session::set('register_old', ['email' => $email, 'name' => $name, 'phone' => $phone]);
-        $pass = (string) Request::input('password', '');
+        $pass = Request::text('password');
         if ($email === '' || $pass === '') {
             Session::flash('err', t('account.errFields'));
             return Response::redirect(url('/account/register'));
         }
-        if ($pass !== (string) Request::input('password2', '')) {
+        if ($phone !== '') {
+            $norm = Text::phone($phone);
+            if ($norm === null) {
+                Session::flash('err', t('checkout.errPhone'));
+                return Response::redirect(url('/account/register'));
+            }
+            $phone = $norm;
+        }
+        if ($pass !== Request::text('password2')) {
             Session::flash('err', t('account.errPassword2'));
             return Response::redirect(url('/account/register'));
         }
-        $r = Users::create($email, $pass, $name, $phone);
+        $r = Users::create($email, $pass, $name, $phone, self::guestOrders());
         if (!$r['ok']) {
             $map = ['email' => 'account.errEmail', 'password' => 'account.errPassword', 'exists' => 'account.errExists'];
             Session::flash('err', t($map[$r['error']] ?? 'account.errFields'));
@@ -124,7 +139,16 @@ final class Account
     {
         $u = self::requireUser();
         Session::requireCsrf();
-        Users::updateProfile($u['id'], Request::str('name'), Request::str('phone'), Request::str('address'));
+        $phone = Text::line(Request::str('phone'), 40);
+        if ($phone !== '') {
+            $norm = Text::phone($phone);
+            if ($norm === null) {
+                Session::flash('err', t('checkout.errPhone'));
+                return Response::redirect(url('/account'));
+            }
+            $phone = $norm;
+        }
+        Users::updateProfile($u['id'], Text::line(Request::str('name'), 100), $phone, Text::line(Request::str('address'), 200));
         Session::flash('ok', t('account.saved'));
         return Response::redirect(url('/account'));
     }
@@ -133,8 +157,17 @@ final class Account
     {
         $u = self::requireUser();
         Session::requireCsrf();
-        $r = Users::changePassword($u['id'], (string) Request::input('current', ''), (string) Request::input('next', ''));
+        // Same brute-force protection as the login form (the current password is a secret too).
+        if (RateLimit::blocked('user-password', 10)) {
+            Session::flash('err', t('account.errLocked'));
+            return Response::redirect(url('/account'));
+        }
+        $r = Users::changePassword($u['id'], Request::text('current'), Request::text('next'));
+        if ($r === 'wrong') {
+            RateLimit::fail('user-password', 15 * 60);
+        }
         if ($r === true) {
+            Session::regenerate();
             Session::flash('ok', t('account.passChanged'));
         } else {
             Session::flash('err', t($r === 'wrong' ? 'account.errWrongPass' : 'account.errPassword'));

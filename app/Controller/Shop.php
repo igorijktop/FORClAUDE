@@ -30,9 +30,9 @@ final class Shop
         // Tile count that always fills the grid: 1 big + 8 small (desktop), or 5, or all.
         $allCats = Categories::visible();
         $cats = array_slice($allCats, 0, count($allCats) >= 9 ? 9 : (count($allCats) >= 5 ? 5 : count($allCats)));
+        $covers = Products::coverPerCategory(array_column($cats, 'name'));
         foreach ($cats as &$c) {
-            $top = Products::search(['category' => [$c['name']], 'per_page' => 1, 'sort' => 'popular'])['items'][0] ?? null;
-            $c['cover'] = $top['images'][0] ?? null;
+            $c['cover'] = $covers[$c['name']] ?? null;
         }
         unset($c);
         $brands = Brands::visible();
@@ -54,7 +54,7 @@ final class Shop
             'page' => 'home',
             'description' => strip_tags($heroLead),
             'image' => 'logo.png',
-            'jsonLd' => [[
+            'jsonLd' => [self::organizationLd($settings), [
                 '@context' => 'https://schema.org',
                 '@type' => 'WebSite',
                 'name' => $settings['siteName'],
@@ -69,30 +69,66 @@ final class Shop
         ]);
     }
 
+    /** schema.org Organization (OnlineStore) for the home page: name, logo, contacts, social profiles. */
+    private static function organizationLd(array $settings): array
+    {
+        $ld = [
+            '@context' => 'https://schema.org',
+            '@type' => 'OnlineStore',
+            'name' => (string) $settings['siteName'],
+            'url' => I18n::abs(url('/')),
+            'logo' => I18n::abs(purl('/assets/img/logo@2x.png')),
+        ];
+        if (!empty($settings['email']) && Text::isEmail((string) $settings['email'])) {
+            $ld['email'] = (string) $settings['email'];
+        }
+        if (!empty($settings['phone'])) {
+            $ld['telephone'] = (string) $settings['phone'];
+        }
+        if (!empty($settings['address'])) {
+            $ld['address'] = ['@type' => 'PostalAddress', 'streetAddress' => (string) $settings['address'], 'addressCountry' => 'UA'];
+        }
+        // Only real profile links, not the bare "https://instagram.com/" placeholders.
+        $same = array_values(array_filter(
+            [(string) ($settings['instagram'] ?? ''), (string) ($settings['telegram'] ?? '')],
+            static fn(string $u) => (bool) preg_match('#^https?://[^/]+/[^/?\#]+#i', $u)
+        ));
+        if ($same) {
+            $ld['sameAs'] = $same;
+        }
+        return $ld;
+    }
+
     /* --------------------------------------------------------------- catalog */
     /** Normalised filters from the query string (accepts legacy parameter names). */
     private static function filters(array $q, ?string $forcedCategory = null): array
     {
-        $arr = static fn($v): array => array_values(array_filter(array_map('strval', (array) $v), static fn($s) => $s !== ''));
+        // Scalars only: "?category[][]=x" or "?q[]=x" must not cause warnings.
+        $arr = static fn($v): array => array_values(array_unique(array_filter(
+            array_map(static fn($x) => is_scalar($x) ? mb_substr(trim((string) $x), 0, 100) : '', (array) $v),
+            static fn($s) => $s !== ''
+        )));
+        $str = static fn($v): string => is_scalar($v) ? trim((string) $v) : '';
         $cats = $arr($q['category'] ?? []);
         if ($forcedCategory !== null && !in_array($forcedCategory, $cats, true)) {
             array_unshift($cats, $forcedCategory);
         }
-        $sort = (string) ($q['sort'] ?? 'new');
+        $sort = $str($q['sort'] ?? 'new');
         if (!in_array($sort, ['new', 'popular', 'price-asc', 'price-desc', 'name'], true)) {
             $sort = 'new';
         }
-        $num = static fn($v): string => (isset($v) && is_numeric($v) && (float) $v >= 0) ? (string) (float) $v : '';
+        $num = static fn($v): string => (isset($v) && is_numeric($v) && (float) $v >= 0 && (float) $v < 1e9) ? (string) (float) $v : '';
+        $page = $q['page'] ?? 1;
         return [
-            'q' => mb_substr(trim((string) ($q['q'] ?? '')), 0, 80),
+            'q' => mb_substr(Text::line($q['q'] ?? '', 200), 0, 80),
             'category' => array_slice($cats, 0, 20),
             'brand' => array_slice($arr($q['brand'] ?? []), 0, 30),
             'min' => $num($q['min'] ?? ($q['minPrice'] ?? null)),
             'max' => $num($q['max'] ?? ($q['maxPrice'] ?? null)),
-            'in_stock' => !empty($q['in_stock'] ?? ($q['inStock'] ?? '')) ? 1 : 0,
-            'featured' => !empty($q['featured']) ? 1 : 0,
+            'in_stock' => !empty($str($q['in_stock'] ?? ($q['inStock'] ?? ''))) ? 1 : 0,
+            'featured' => !empty($str($q['featured'] ?? '')) ? 1 : 0,
             'sort' => $sort,
-            'page' => max(1, (int) ($q['page'] ?? 1)),
+            'page' => is_numeric($page) ? (int) max(1, min(100000, (float) $page)) : 1,
         ];
     }
 
@@ -117,13 +153,14 @@ final class Shop
 
     public static function category(array $p): Response
     {
-        $cat = Categories::find($p['slug']);
+        $cat = Categories::find($p['slug']) ?? Categories::find(Text::lower($p['slug']));
         if (!$cat || !$cat['active']) {
             return Response::notFound();
         }
         // Old links used the category name: /catalog/<Name> → canonical slug URL.
         if ($cat['slug'] !== $p['slug']) {
-            return Response::redirect(url('/catalog/' . $cat['slug']), 301);
+            $qs = query_string(Request::queryAll());
+            return Response::redirect(url('/catalog/' . $cat['slug']) . ($qs !== '' ? '?' . $qs : ''), 301);
         }
         $f = self::filters(Request::queryAll(), $cat['name']);
         return self::renderCatalog($f, $cat);
@@ -138,7 +175,8 @@ final class Shop
         ]);
         $isCategoryPage = $cat !== null;
         $basePath = $isCategoryPage ? '/catalog/' . $cat['slug'] : '/catalog';
-        $singleCat = count($f['category']) === 1 ? Categories::find($f['category'][0]) : null;
+        $singleCat = count($f['category']) !== 1 ? null
+            : ($cat !== null && $cat['name'] === $f['category'][0] ? $cat : Categories::find($f['category'][0]));
 
         // Query used for links (sort/page/filters). On a category page the category itself is implicit.
         $linkQuery = [
@@ -159,16 +197,22 @@ final class Shop
         ];
 
         $canonicalUrl = url($basePath) . (($qs = query_string($linkQuery + ['page' => $result['page'] > 1 ? $result['page'] : ''])) !== '' ? '?' . $qs : '');
+        // Past the last page (old link, products sold out): go to the last real page instead of a copy of it.
+        if ($f['page'] > $result['page'] && Request::query('partial') === null) {
+            return Response::redirect($canonicalUrl, 302);
+        }
 
         if (Request::query('partial') !== null) {
-            $mode = (string) Request::query('partial');
+            $mode = Request::queryStr('partial');
             $cards = '';
             foreach ($result['items'] as $prod) {
                 $cards .= view('shop/_card', ['p' => $prod]);
             }
             if ($mode === 'cards') {
+                // "Load more" past the end (products sold out meanwhile): nothing new, not a second copy of the last page.
+                $past = $f['page'] > $result['page'];
                 return Response::json([
-                    'ok' => true, 'html' => $cards, 'page' => $result['page'], 'pages' => $result['pages'], 'total' => $result['total'],
+                    'ok' => true, 'html' => $past ? '' : $cards, 'page' => $past ? $f['page'] : $result['page'], 'pages' => $result['pages'], 'total' => $result['total'],
                 ])->noCache();
             }
             return Response::json([
@@ -199,7 +243,8 @@ final class Shop
             'active' => $f['featured'] ? 'new' : 'catalog',
             'page' => 'catalog',
             'image' => $result['items'][0]['images'][0] ?? 'logo.png',
-            'path' => $basePath,
+            // Every page of a listing is its own canonical URL (Google ignores rel=prev/next).
+            'path' => $basePath . (($cq = query_string(['featured' => $f['featured'] ?: '', 'page' => $result['page'] > 1 ? $result['page'] : ''])) !== '' ? '?' . $cq : ''),
             'noindex' => $noindex,
             'jsonLd' => [$ld],
             'bodyClass' => 'is-catalog',
@@ -222,7 +267,7 @@ final class Shop
     {
         static $r = null;
         if ($r === null) {
-            $row = \Onika\Db::one('SELECT MIN(price) AS lo, MAX(price) AS hi FROM products WHERE active = 1 AND category NOT IN (SELECT name FROM categories WHERE active = 0)');
+            $row = \Onika\Db::one("SELECT MIN(price) AS lo, MAX(price) AS hi FROM products WHERE active = 1 AND COALESCE(category, '') NOT IN (SELECT name FROM categories WHERE active = 0)");
             $r = ['min' => (int) floor((float) ($row['lo'] ?? 0)), 'max' => (int) ceil((float) ($row['hi'] ?? 0))];
         }
         return $r;
@@ -232,6 +277,9 @@ final class Shop
     public static function product(array $p): Response
     {
         $prod = Products::findVisible($p['slug']);
+        if (!$prod && Text::lower($p['slug']) !== $p['slug']) {
+            $prod = Products::findVisible(Text::lower($p['slug']));
+        }
         if (!$prod) {
             return Response::notFound();
         }
@@ -258,10 +306,12 @@ final class Shop
                 'sku' => $prod['sku'] ?: $prod['id'],
                 'brand' => ['@type' => 'Brand', 'name' => $prod['brand'] ?: $settings['siteName']],
                 'category' => $catLabel,
-                'image' => array_map(static fn($s) => I18n::abs(Media::url($s, 1000)), array_slice($prod['images'], 0, 4)),
+                'image' => $prod['images']
+                    ? array_map(static fn($s) => I18n::abs(Media::url($s, 1000)), array_slice($prod['images'], 0, 4))
+                    : [I18n::abs(purl('/assets/img/og-default.png'))],
                 'url' => $canonical,
                 'offers' => [
-                    '@type' => 'Offer', 'url' => $canonical, 'priceCurrency' => 'UAH', 'price' => $prod['price'],
+                    '@type' => 'Offer', 'url' => $canonical, 'priceCurrency' => 'UAH', 'price' => number_format($prod['price'], 2, '.', ''),
                     'availability' => $prod['inStock'] ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
                     'itemCondition' => 'https://schema.org/NewCondition',
                     'seller' => ['@type' => 'Organization', 'name' => $settings['siteName']],
@@ -301,7 +351,7 @@ final class Shop
     /** Count one view per visitor session and product (ignoring crawlers). */
     private static function countView(string $id): void
     {
-        if (preg_match('/bot|crawl|spider|slurp|facebookexternalhit|preview/i', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))) {
+        if (Request::method() === 'HEAD' || preg_match('/bot|crawl|spider|slurp|facebookexternalhit|preview/i', (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''))) {
             return;
         }
         $seen = (array) Session::get('viewed', []);
@@ -332,7 +382,7 @@ final class Shop
         }
         $user = Auth::user();
         $owner = $user && $order['userId'] && $order['userId'] === $user['id'];
-        $token = (string) Request::query('token', '');
+        $token = Request::queryStr('token');
         if (!Auth::admin() && !$owner && !hash_equals($order['token'], $token)) {
             return Response::notFound();
         }

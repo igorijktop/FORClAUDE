@@ -42,16 +42,16 @@ final class Api
     /** GET /api/search?q= — suggestions for the header search box. */
     public static function search(array $p): Response
     {
-        $q = trim((string) Request::query('q', ''));
+        $q = mb_substr(Text::line(Request::queryStr('q'), 1000), 0, 80);
         if (mb_strlen($q) < 2) {
             return Response::json(['ok' => true, 'items' => [], 'categories' => [], 'total' => 0]);
         }
         $r = Products::search(['q' => $q, 'per_page' => 6, 'sort' => 'popular']);
-        $lower = Text::lower($q);
+        $lower = Text::searchNorm(Text::lower($q));
         $cats = [];
         foreach (Categories::visible() as $c) {
             $label = I18n::categoryLabel($c);
-            if (str_contains(Text::lower($label), $lower)) {
+            if (str_contains(Text::searchNorm(Text::lower($label)), $lower)) {
                 $cats[] = ['name' => $label, 'url' => url('/catalog/' . $c['slug']), 'count' => $c['count']];
             }
         }
@@ -61,13 +61,13 @@ final class Api
             'categories' => array_slice($cats, 0, 3),
             'total' => $r['total'],
             'all' => url('/catalog') . '?q=' . rawurlencode($q),
-        ])->header('Cache-Control', 'private, max-age=30');
+        ])->header('Cache-Control', 'private, max-age=30')->header('Vary', 'Referer');
     }
 
     /** GET /api/products?ids=1,2,3 — fresh price/stock data for cart, favourites and "recently viewed". */
     public static function products(array $p): Response
     {
-        $ids = array_filter(explode(',', (string) Request::query('ids', '')), 'strlen');
+        $ids = array_filter(array_map('trim', explode(',', Request::queryStr('ids'))), 'strlen');
         $items = array_map([self::class, 'brief'], Products::byIds($ids));
         return Response::json(['ok' => true, 'items' => $items])->noCache();
     }
@@ -86,10 +86,22 @@ final class Api
                 $msg = !empty($r['limits']) ? t('js.stockLimit') : t('js.unavailable');
             } elseif (($errors['items'] ?? '') === 'empty') {
                 $msg = t('js.emptyCart');
+            } else {
+                // Name the first field that is wrong instead of a generic "order error".
+                foreach (['name' => 'checkout.errName', 'phone' => 'checkout.errPhone', 'email' => 'checkout.errEmail', 'city' => 'checkout.errCity', 'warehouse' => 'checkout.errWarehouse'] as $field => $key) {
+                    if (isset($errors[$field])) {
+                        $msg = t($key);
+                        break;
+                    }
+                }
             }
             return Response::json(['ok' => false, 'error' => $msg, 'errors' => $errors, 'unavailable' => $r['unavailable'] ?? [], 'limits' => (object) ($r['limits'] ?? [])], 422);
         }
         $o = $r['order'];
+        if (!$user) {
+            // Lets the guest attach this order to an account created/logged into later (Users::linkGuestOrders()).
+            Session::set('guest_orders', array_slice(array_merge(array_filter((array) Session::get('guest_orders', []), 'is_string'), [$o['id']]), -50));
+        }
         return Response::json([
             'ok' => true,
             'order' => ['id' => $o['id'], 'total' => $o['total']],
@@ -102,7 +114,7 @@ final class Api
     {
         Session::requireCsrf();
         RateLimit::guard('subscribe', 8, 600);
-        return Response::json(['ok' => Subscribers::add((string) Request::input('email', ''))]);
+        return Response::json(['ok' => Subscribers::add(mb_substr(Request::str('email'), 0, 190))]);
     }
 
     /** POST /api/contact (JSON {name, contact, message}). */
@@ -114,9 +126,9 @@ final class Api
         if (Request::str('website') !== '') {
             return Response::json(['ok' => true]);
         }
-        $name = Request::str('name');
-        $contact = Request::str('contact');
-        $message = Request::str('message');
+        $name = Text::line(Request::str('name'), 100);
+        $contact = Text::line(Request::str('contact'), 150);
+        $message = mb_scrub(Request::str('message'), 'UTF-8');
         if ($name === '' || $contact === '' || mb_strlen($message) < 3) {
             return Response::json(['ok' => false, 'error' => t('contacts.fill')], 422);
         }

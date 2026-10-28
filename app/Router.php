@@ -28,7 +28,8 @@ final class Router
             $re = $m[2] ?? '[^/]+';
             return '(?P<' . $m[1] . '>' . $re . ')';
         }, $pattern);
-        $this->routes[] = [$method, '#^' . $regex . '$#u', $handler];
+        // "D": "$" must not match before a trailing newline ("/media/…webp%0A").
+        $this->routes[] = [$method, '#^' . $regex . '$#uD', $handler];
     }
 
     public function dispatch(string $method, string $path): Response
@@ -43,8 +44,8 @@ final class Router
                 $allowed[] = $m;
                 continue;
             }
+            // The path is already percent-decoded (Request::init); decoding again would turn "%2541" into "A".
             $params = array_filter($mm, 'is_string', ARRAY_FILTER_USE_KEY);
-            $params = array_map('rawurldecode', $params);
             $res = $handler($params);
             if ($res instanceof Response) {
                 return $res;
@@ -52,8 +53,14 @@ final class Router
             return Response::html((string) $res);
         }
         if ($allowed) {
-            return Response::text('Method Not Allowed', 'text/plain; charset=utf-8', 405)
-                ->header('Allow', implode(', ', array_unique($allowed)));
+            $allowed = array_unique($allowed);
+            if (in_array('GET', $allowed, true)) {
+                $allowed[] = 'HEAD';
+            }
+            $res = str_starts_with($path, '/api/')
+                ? Response::json(['ok' => false, 'error' => 'method_not_allowed'], 405)
+                : Response::text('Method Not Allowed', 'text/plain; charset=utf-8', 405);
+            return $res->header('Allow', implode(', ', $allowed));
         }
         return Response::notFound();
     }

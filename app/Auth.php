@@ -134,6 +134,7 @@ final class Auth
     public static function logoutUser(): void
     {
         Session::forget('user_id');
+        Session::regenerate();
         self::$user = null;
         self::$userLoaded = true;
     }

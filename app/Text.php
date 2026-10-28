@@ -19,6 +19,62 @@ final class Text
         return mb_strtolower($s, 'UTF-8');
     }
 
+    /**
+     * Form text that must fit on one line (names, cities, phones): any value type is accepted
+     * (arrays give ""), invalid UTF-8 and control characters are dropped, whitespace is collapsed.
+     */
+    public static function line(mixed $v, int $max = 200): string
+    {
+        if (!is_scalar($v)) {
+            return '';
+        }
+        $s = mb_scrub((string) $v, 'UTF-8');
+        $s = preg_replace('/[\p{Cc}\p{Zl}\p{Zp}\x{200B}\x{FEFF}]+/u', ' ', $s) ?? '';
+        return self::truncate($s, $max);
+    }
+
+    /**
+     * Search-friendly form of a lower-cased text: "ё" matches "е", every apostrophe variant
+     * (’ ʼ ` ´) is the plain one, so "м’ята" finds "м'ята".
+     */
+    public static function searchNorm(string $s): string
+    {
+        return strtr($s, ['ё' => 'е', '’' => "'", 'ʼ' => "'", '`' => "'", '´' => "'", '‘' => "'"]);
+    }
+
+    /**
+     * Normalise a phone number. Ukrainian numbers in any common notation (+380…, 380…, 80…, 0XX…)
+     * become "+380 XX XXX XX XX"; other international numbers keep their digits with a "+".
+     * Returns null when the value cannot be a phone number.
+     */
+    public static function phone(string $s): ?string
+    {
+        $s = trim($s);
+        if ($s === '' || preg_match('/[^\d\s+()\-.\/]/', $s)) {
+            return null;
+        }
+        $d = self::phoneDigits($s);
+        if (str_starts_with($d, '00')) {
+            $d = substr($d, 2);
+        } elseif (strlen($d) === 10 && $d[0] === '0') {
+            $d = '38' . $d;
+        } elseif (strlen($d) === 11 && str_starts_with($d, '80')) {
+            $d = '3' . $d;
+        } elseif (strlen($d) === 13 && str_starts_with($d, '3800')) {
+            $d = '380' . substr($d, 4);       // "+380 067…": the trunk zero typed twice
+        }
+        if (str_starts_with($d, '380')) {
+            if (strlen($d) !== 12 || $d[3] === '0') {
+                return null;
+            }
+            return '+380 ' . substr($d, 3, 2) . ' ' . substr($d, 5, 3) . ' ' . substr($d, 8, 2) . ' ' . substr($d, 10, 2);
+        }
+        if ($d === '' || $d[0] === '0' || strlen($d) < 10 || strlen($d) > 15) {
+            return null;
+        }
+        return '+' . $d;
+    }
+
     public static function slugify(string $s, int $max = 60): string
     {
         $s = self::lower($s);
@@ -60,7 +116,7 @@ final class Text
                 $flat[] = $p;
             }
         }
-        return self::lower(implode(' ', $flat));
+        return self::searchNorm(self::lower(implode(' ', $flat)));
     }
 
     public static function truncate(string $s, int $len): string

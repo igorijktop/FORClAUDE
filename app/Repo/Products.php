@@ -56,22 +56,27 @@ final class Products
             $where[] = 'active = 1';
             $where[] = "COALESCE(category, '') NOT IN (SELECT name FROM categories WHERE active = 0)";
         }
-        $q = trim((string) ($f['q'] ?? ''));
+        $q = mb_substr(Text::line($f['q'] ?? '', 100000), 0, 300);
         if ($q !== '') {
-            foreach (array_slice(preg_split('/\s+/u', Text::lower($q)) ?: [], 0, 6) as $term) {
+            // Up to 6 words, 60 characters each: SQLite rejects very long LIKE patterns ("pattern too complex").
+            foreach (array_slice(preg_split('/\s+/u', Text::searchNorm(Text::lower($q))) ?: [], 0, 6) as $term) {
                 if ($term === '') {
                     continue;
                 }
                 $where[] = "search_blob LIKE ? ESCAPE '\\'";
-                $params[] = Db::like($term);
+                $params[] = Db::like(mb_substr($term, 0, 60));
             }
         }
-        $cats = array_values(array_filter((array) ($f['category'] ?? []), 'strlen'));
+        $list = static fn($v): array => array_values(array_filter(
+            array_map(static fn($x) => is_scalar($x) ? (string) $x : '', (array) $v),
+            static fn(string $x) => $x !== ''
+        ));
+        $cats = $list($f['category'] ?? []);
         if ($cats) {
             $where[] = 'category IN (' . Db::in($cats) . ')';
             array_push($params, ...$cats);
         }
-        $brands = array_values(array_filter((array) ($f['brand'] ?? []), 'strlen'));
+        $brands = $list($f['brand'] ?? []);
         if ($brands) {
             $where[] = 'brand IN (' . Db::in($brands) . ')';
             array_push($params, ...$brands);
@@ -90,7 +95,7 @@ final class Products
         if (!empty($f['featured'])) {
             $where[] = 'featured = 1';
         }
-        if (isset($f['status']) && $f['status'] !== '') {
+        if (isset($f['status']) && is_scalar($f['status']) && $f['status'] !== '') {
             $where[] = match ((string) $f['status']) {
                 'active' => 'active = 1',
                 'hidden' => 'active = 0',
@@ -100,18 +105,19 @@ final class Products
         }
         $sql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
 
-        $order = match ((string) ($f['sort'] ?? 'new')) {
+        $order = match (is_scalar($f['sort'] ?? null) ? (string) $f['sort'] : 'new') {
             'price-asc' => 'price ASC, id DESC',
             'price-desc' => 'price DESC, id DESC',
-            'popular' => 'views DESC, created_at DESC',
-            'name' => 'name COLLATE NOCASE ASC',
+            // Every order ends with a unique column: equal names/views must not swap places between pages.
+            'popular' => 'views DESC, created_at DESC, id DESC',
+            'name' => 'name COLLATE NOCASE ASC, id ASC',
             default => 'created_at DESC, id DESC',
         };
 
         $total = (int) Db::val('SELECT COUNT(*) FROM products' . $sql, $params);
-        $perPage = max(1, min(100, (int) ($f['per_page'] ?? cfg('per_page', 24))));
+        $perPage = max(1, min(100, is_numeric($f['per_page'] ?? null) ? (int) $f['per_page'] : (int) cfg('per_page', 24)));
         $pages = max(1, (int) ceil($total / $perPage));
-        $page = max(1, min($pages, (int) ($f['page'] ?? 1)));
+        $page = max(1, min($pages, is_numeric($f['page'] ?? null) ? (int) min(PHP_INT_MAX, (float) $f['page']) : 1));
         $rows = Db::all(
             'SELECT * FROM products' . $sql . ' ORDER BY ' . $order . ' LIMIT ? OFFSET ?',
             array_merge($params, [$perPage, ($page - 1) * $perPage])
@@ -168,6 +174,43 @@ final class Products
             if (isset($by[$id])) {
                 $out[] = $by[$id];
             }
+        }
+        return $out;
+    }
+
+    /**
+     * First photo of the most popular visible product of each category (home page tiles), in one query.
+     * Same order as search(['sort' => 'popular']): views DESC, created_at DESC, id DESC.
+     * @param list<string> $categories
+     * @return array<string,?string> category name => image path (null when that product has no photo)
+     */
+    public static function coverPerCategory(array $categories): array
+    {
+        $categories = array_values(array_unique(array_map('strval', $categories)));
+        if (!$categories) {
+            return [];
+        }
+        try {
+            $rows = Db::all(
+                'SELECT category, images FROM (
+                    SELECT category, images, ROW_NUMBER() OVER (PARTITION BY category ORDER BY views DESC, created_at DESC, id DESC) AS rn
+                    FROM products WHERE active = 1 AND category IN (' . Db::in($categories) . ')
+                 ) WHERE rn = 1',
+                $categories
+            );
+        } catch (\PDOException) {       // SQLite older than 3.25 (no window functions)
+            $rows = [];
+            foreach ($categories as $c) {
+                $r = Db::one('SELECT category, images FROM products WHERE active = 1 AND category = ? ORDER BY views DESC, created_at DESC, id DESC LIMIT 1', [$c]);
+                if ($r) {
+                    $rows[] = $r;
+                }
+            }
+        }
+        $out = array_fill_keys($categories, null);
+        foreach ($rows as $r) {
+            $imgs = array_values(array_filter((array) Text::jsonDecode($r['images'] ?? '[]', []), 'is_string'));
+            $out[(string) $r['category']] = $imgs[0] ?? null;
         }
         return $out;
     }
